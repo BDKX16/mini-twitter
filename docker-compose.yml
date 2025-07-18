@@ -1,0 +1,97 @@
+version: "3.8"
+
+services:
+  # Frontend React/Next.js
+  frontend:
+    container_name: fit-tracker-frontend
+    build:
+      context: ./fe
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "3012:3000" # Puerto para el frontend Next.js    environment:
+      - NODE_ENV=production
+      - HOSTNAME=0.0.0.0
+      - NEXT_PUBLIC_API_URL=/api
+    depends_on:
+      - backend
+  # Backend Express API
+  backend:
+    image: node:18-alpine
+    working_dir: /app
+    volumes:
+      - ./api:/app
+      - /app/node_modules
+    command: sh -c "npm install && npm run dev"
+    ports:
+      - "4000:4000"
+    depends_on:
+      - mongodb
+      - redis
+    environment:
+      - NODE_ENV=development
+      - API_PORT=4000
+      - MONGO_HOST=mongodb
+      - MONGO_PORT=27017
+      - MONGO_USERNAME=admin
+      - MONGO_PASSWORD=password123
+      - MONGO_DATABASE=twitter
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - FRONTEND_URL=http://localhost:3000
+    networks:
+      - twitter-network
+    restart: unless-stopped
+
+  # MongoDB - Base de datos principal
+  mongodb:
+    image: mongo:7
+    container_name: twitter-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=password123
+      - MONGO_INITDB_DATABASE=twitter
+    volumes:
+      - mongodb_data:/data/db
+      - ./scripts/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    command: mongod --auth --bind_ip_all
+    networks:
+      - twitter-network
+    restart: unless-stopped
+
+  # Redis - Cache y operaciones en tiempo real
+  redis:
+    image: redis:7-alpine
+    container_name: twitter-redis
+    ports:
+      - "6379:6379"
+    command: >
+      redis-server 
+      --appendonly yes 
+      --maxmemory 512mb 
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+    volumes:
+      - redis_data:/data
+    networks:
+      - twitter-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  mongodb_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  twitter-network:
+    driver: bridge
