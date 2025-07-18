@@ -12,7 +12,7 @@ const uniqueValidator = require("mongoose-unique-validator");
 // Define the user schema
 const userSchema = new Schema<IUserDocument>(
   {
-    name: {
+    username: {
       type: String,
       required: [true, "Name is required"],
       trim: true,
@@ -122,7 +122,7 @@ userSchema.index({ createdAt: -1 });
 // Instance methods
 userSchema.methods.getPublicProfile = function (): Partial<IUser> {
   return {
-    name: this.name,
+    username: this.username,
     email: this.email,
     confirmed: this.confirmed,
     createdAt: this.createdAt,
@@ -135,7 +135,7 @@ userSchema.methods.getFullName = function (): string {
   if (this.firstName && this.lastName) {
     return `${this.firstName} ${this.lastName}`;
   }
-  return this.name;
+  return this.username;
 };
 
 userSchema.methods.isAccountConfirmed = function (): boolean {
@@ -164,9 +164,9 @@ userSchema.pre("save", function (next) {
     this.email = this.email.toLowerCase();
   }
 
-  // Set default name if not provided
-  if (!this.name && this.firstName && this.lastName) {
-    this.name = `${this.firstName} ${this.lastName}`;
+  // Set default username if not provided
+  if (!this.username && this.firstName && this.lastName) {
+    this.username = `${this.firstName} ${this.lastName}`;
   }
 
   next();

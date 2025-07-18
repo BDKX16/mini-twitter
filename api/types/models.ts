@@ -9,7 +9,7 @@ export type MongooseObjectId = Types.ObjectId;
 
 // User interfaces
 export interface IUser {
-  name: string;
+  username: string;
   email: string;
   password: string;
   confirmed: boolean;
@@ -106,7 +106,7 @@ export interface IPopulatedFollow
 
 // Model creation interfaces
 export interface IUserModel {
-  name: string;
+  username: string;
   email: string;
   password: string;
   confirmed?: boolean;
@@ -142,7 +142,7 @@ export interface IFollowModel {
 export interface IUserQuery {
   _id?: MongooseObjectId;
   email?: string;
-  name?: string;
+  username?: string;
   confirmed?: boolean;
   isDeleted?: boolean;
 }
@@ -195,7 +195,7 @@ export interface IUserStats {
 // API response interfaces
 export interface IUserResponse {
   id: string;
-  name: string;
+  username: string;
   email: string;
   confirmed: boolean;
   createdAt: Date;

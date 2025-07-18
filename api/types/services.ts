@@ -26,6 +26,7 @@ export interface SearchOptions extends ServiceOptions {
 
 // User service interfaces
 export interface CreateUserData {
+  username: string;
   firstName: string;
   lastName?: string;
   email: string;

@@ -33,6 +33,7 @@ export class UserController {
         firstName,
         lastName,
         email,
+        username,
         password,
         bio,
         profileImage,
@@ -48,6 +49,7 @@ export class UserController {
       const userData: CreateUserData = {
         firstName,
         lastName,
+        username,
         email,
         password,
         bio,
