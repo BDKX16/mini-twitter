@@ -1,12 +1,56 @@
-const { RateLimitError } = require("../utils/errors");
+/**
+ * Rate Limiting Middleware - TypeScript version
+ * Advanced rate limiting system for Twitter Clone API
+ */
 
-class RateLimiter {
-  constructor(redisClient) {
+import { Request, Response, NextFunction } from "express";
+import { RedisClientType } from "redis";
+import { RateLimitError } from "../utils/errors";
+import { AuthenticatedRequest } from "../types/controllers";
+
+interface RateLimitOptions {
+  windowMs: number;
+  maxRequests: number;
+  identifier?: string;
+}
+
+interface RateLimitResult {
+  limit: number;
+  current: number;
+  remaining: number;
+  resetTime: number;
+}
+
+interface RateLimitErrorData {
+  limit: number;
+  current: number;
+  windowMs: number;
+  resetTime: number;
+}
+
+interface RateLimitStats {
+  [key: string]: {
+    current: number;
+    ttl: number;
+  };
+}
+
+export class RateLimiter {
+  private redis: RedisClientType;
+
+  constructor(redisClient: RedisClientType) {
     this.redis = redisClient;
   }
 
-  // Rate limiter genérico
-  async checkRateLimit(key, windowMs, maxRequests, identifier = "request") {
+  /**
+   * Rate limiter genérico
+   */
+  public async checkRateLimit(
+    key: string,
+    windowMs: number,
+    maxRequests: number,
+    identifier: string = "request"
+  ): Promise<RateLimitResult> {
     try {
       const now = Date.now();
       const window = Math.floor(now / windowMs);
@@ -32,7 +76,7 @@ class RateLimiter {
             current,
             windowMs,
             resetTime,
-          }
+          } as RateLimitErrorData
         );
       }
 
@@ -57,13 +101,18 @@ class RateLimiter {
     }
   }
 
-  // Rate limiter por IP
-  createIPRateLimiter(windowMs = 15 * 60 * 1000, maxRequests = 100) {
-    return async (req, res, next) => {
+  /**
+   * Rate limiter por IP
+   */
+  public createIPRateLimiter(
+    windowMs: number = 15 * 60 * 1000,
+    maxRequests: number = 100
+  ) {
+    return async (req: Request, res: Response, next: NextFunction) => {
       try {
         const ip =
           req.ip ||
-          req.connection.remoteAddress ||
+          (req as any).connection?.remoteAddress ||
           req.headers["x-forwarded-for"];
         const key = `ip:${ip}`;
 
@@ -76,8 +125,8 @@ class RateLimiter {
 
         // Agregar headers de rate limiting
         res.set({
-          "X-RateLimit-Limit": result.limit,
-          "X-RateLimit-Remaining": result.remaining,
+          "X-RateLimit-Limit": result.limit.toString(),
+          "X-RateLimit-Remaining": result.remaining.toString(),
           "X-RateLimit-Reset": new Date(result.resetTime).toISOString(),
         });
 
@@ -88,7 +137,9 @@ class RateLimiter {
             success: false,
             error: "Rate limit exceeded",
             message: error.message,
-            retryAfter: Math.ceil((error.resetTime - Date.now()) / 1000),
+            retryAfter: Math.ceil(
+              ((error as any).resetTime - Date.now()) / 1000
+            ),
           });
         } else {
           next(error);
@@ -97,9 +148,18 @@ class RateLimiter {
     };
   }
 
-  // Rate limiter por usuario
-  createUserRateLimiter(windowMs = 15 * 60 * 1000, maxRequests = 50) {
-    return async (req, res, next) => {
+  /**
+   * Rate limiter por usuario
+   */
+  public createUserRateLimiter(
+    windowMs: number = 15 * 60 * 1000,
+    maxRequests: number = 50
+  ) {
+    return async (
+      req: AuthenticatedRequest,
+      res: Response,
+      next: NextFunction
+    ) => {
       try {
         const userId = req.user?.id;
         if (!userId) {
@@ -117,8 +177,8 @@ class RateLimiter {
 
         // Agregar headers de rate limiting
         res.set({
-          "X-RateLimit-Limit": result.limit,
-          "X-RateLimit-Remaining": result.remaining,
+          "X-RateLimit-Limit": result.limit.toString(),
+          "X-RateLimit-Remaining": result.remaining.toString(),
           "X-RateLimit-Reset": new Date(result.resetTime).toISOString(),
         });
 
@@ -129,7 +189,9 @@ class RateLimiter {
             success: false,
             error: "Rate limit exceeded",
             message: error.message,
-            retryAfter: Math.ceil((error.resetTime - Date.now()) / 1000),
+            retryAfter: Math.ceil(
+              ((error as any).resetTime - Date.now()) / 1000
+            ),
           });
         } else {
           next(error);
@@ -138,9 +200,19 @@ class RateLimiter {
     };
   }
 
-  // Rate limiter específico para acciones (tweets, likes, etc.)
-  createActionRateLimiter(action, windowMs = 60 * 1000, maxRequests = 10) {
-    return async (req, res, next) => {
+  /**
+   * Rate limiter específico para acciones (tweets, likes, etc.)
+   */
+  public createActionRateLimiter(
+    action: string,
+    windowMs: number = 60 * 1000,
+    maxRequests: number = 10
+  ) {
+    return async (
+      req: AuthenticatedRequest,
+      res: Response,
+      next: NextFunction
+    ) => {
       try {
         const userId = req.user?.id;
         if (!userId) {
@@ -158,8 +230,8 @@ class RateLimiter {
 
         // Agregar headers de rate limiting
         res.set({
-          "X-RateLimit-Limit": result.limit,
-          "X-RateLimit-Remaining": result.remaining,
+          "X-RateLimit-Limit": result.limit.toString(),
+          "X-RateLimit-Remaining": result.remaining.toString(),
           "X-RateLimit-Reset": new Date(result.resetTime).toISOString(),
           "X-RateLimit-Action": action,
         });
@@ -172,7 +244,9 @@ class RateLimiter {
             error: "Rate limit exceeded",
             message: error.message,
             action: action,
-            retryAfter: Math.ceil((error.resetTime - Date.now()) / 1000),
+            retryAfter: Math.ceil(
+              ((error as any).resetTime - Date.now()) / 1000
+            ),
           });
         } else {
           next(error);
@@ -181,23 +255,30 @@ class RateLimiter {
     };
   }
 
-  // Rate limiter progresivo (aumenta penalización con violaciones)
-  createProgressiveRateLimiter(
-    baseWindowMs = 15 * 60 * 1000,
-    baseMaxRequests = 100
+  /**
+   * Rate limiter progresivo (aumenta penalización con violaciones)
+   */
+  public createProgressiveRateLimiter(
+    baseWindowMs: number = 15 * 60 * 1000,
+    baseMaxRequests: number = 100
   ) {
-    return async (req, res, next) => {
+    return async (
+      req: AuthenticatedRequest,
+      res: Response,
+      next: NextFunction
+    ) => {
       try {
         const userId = req.user?.id;
         const ip =
           req.ip ||
-          req.connection.remoteAddress ||
+          (req as any).connection?.remoteAddress ||
           req.headers["x-forwarded-for"];
         const identifier = userId ? `user:${userId}` : `ip:${ip}`;
 
         // Verificar violaciones previas
         const violationKey = `violations:${identifier}`;
-        const violations = (await this.redis.get(violationKey)) || 0;
+        const violationsStr = await this.redis.get(violationKey);
+        const violations = parseInt(violationsStr || "0");
 
         // Calcular límites ajustados
         const penaltyMultiplier = Math.pow(2, violations);
@@ -216,11 +297,11 @@ class RateLimiter {
 
         // Agregar headers de rate limiting
         res.set({
-          "X-RateLimit-Limit": result.limit,
-          "X-RateLimit-Remaining": result.remaining,
+          "X-RateLimit-Limit": result.limit.toString(),
+          "X-RateLimit-Remaining": result.remaining.toString(),
           "X-RateLimit-Reset": new Date(result.resetTime).toISOString(),
-          "X-RateLimit-Violations": violations,
-          "X-RateLimit-Penalty": penaltyMultiplier,
+          "X-RateLimit-Violations": violations.toString(),
+          "X-RateLimit-Penalty": penaltyMultiplier.toString(),
         });
 
         next();
@@ -230,7 +311,7 @@ class RateLimiter {
           const userId = req.user?.id;
           const ip =
             req.ip ||
-            req.connection.remoteAddress ||
+            (req as any).connection?.remoteAddress ||
             req.headers["x-forwarded-for"];
           const identifier = userId ? `user:${userId}` : `ip:${ip}`;
           const violationKey = `violations:${identifier}`;
@@ -242,7 +323,9 @@ class RateLimiter {
             success: false,
             error: "Rate limit exceeded",
             message: error.message,
-            retryAfter: Math.ceil((error.resetTime - Date.now()) / 1000),
+            retryAfter: Math.ceil(
+              ((error as any).resetTime - Date.now()) / 1000
+            ),
           });
         } else {
           next(error);
@@ -251,14 +334,24 @@ class RateLimiter {
     };
   }
 
-  // Rate limiter por endpoint específico
-  createEndpointRateLimiter(endpoint, windowMs = 60 * 1000, maxRequests = 20) {
-    return async (req, res, next) => {
+  /**
+   * Rate limiter por endpoint específico
+   */
+  public createEndpointRateLimiter(
+    endpoint: string,
+    windowMs: number = 60 * 1000,
+    maxRequests: number = 20
+  ) {
+    return async (
+      req: Request | AuthenticatedRequest,
+      res: Response,
+      next: NextFunction
+    ) => {
       try {
-        const userId = req.user?.id;
+        const userId = (req as AuthenticatedRequest).user?.id;
         const ip =
           req.ip ||
-          req.connection.remoteAddress ||
+          (req as any).connection?.remoteAddress ||
           req.headers["x-forwarded-for"];
         const identifier = userId ? `user:${userId}` : `ip:${ip}`;
         const key = `endpoint:${endpoint}:${identifier}`;
@@ -272,8 +365,8 @@ class RateLimiter {
 
         // Agregar headers de rate limiting
         res.set({
-          "X-RateLimit-Limit": result.limit,
-          "X-RateLimit-Remaining": result.remaining,
+          "X-RateLimit-Limit": result.limit.toString(),
+          "X-RateLimit-Remaining": result.remaining.toString(),
           "X-RateLimit-Reset": new Date(result.resetTime).toISOString(),
           "X-RateLimit-Endpoint": endpoint,
         });
@@ -286,7 +379,9 @@ class RateLimiter {
             error: "Rate limit exceeded",
             message: error.message,
             endpoint: endpoint,
-            retryAfter: Math.ceil((error.resetTime - Date.now()) / 1000),
+            retryAfter: Math.ceil(
+              ((error as any).resetTime - Date.now()) / 1000
+            ),
           });
         } else {
           next(error);
@@ -295,13 +390,18 @@ class RateLimiter {
     };
   }
 
-  // Rate limiter específico para autenticación
-  createAuthRateLimiter(windowMs = 15 * 60 * 1000, maxRequests = 5) {
-    return async (req, res, next) => {
+  /**
+   * Rate limiter específico para autenticación
+   */
+  public createAuthRateLimiter(
+    windowMs: number = 15 * 60 * 1000,
+    maxRequests: number = 5
+  ) {
+    return async (req: Request, res: Response, next: NextFunction) => {
       try {
         const ip =
           req.ip ||
-          req.connection.remoteAddress ||
+          (req as any).connection?.remoteAddress ||
           req.headers["x-forwarded-for"];
         const { username, email } = req.body;
 
@@ -318,8 +418,8 @@ class RateLimiter {
 
         // Agregar headers de rate limiting
         res.set({
-          "X-RateLimit-Limit": result.limit,
-          "X-RateLimit-Remaining": result.remaining,
+          "X-RateLimit-Limit": result.limit.toString(),
+          "X-RateLimit-Remaining": result.remaining.toString(),
           "X-RateLimit-Reset": new Date(result.resetTime).toISOString(),
         });
 
@@ -331,7 +431,9 @@ class RateLimiter {
             error: "Authentication rate limit exceeded",
             message:
               "Too many authentication attempts. Please try again later.",
-            retryAfter: Math.ceil((error.resetTime - Date.now()) / 1000),
+            retryAfter: Math.ceil(
+              ((error as any).resetTime - Date.now()) / 1000
+            ),
           });
         } else {
           next(error);
@@ -340,11 +442,13 @@ class RateLimiter {
     };
   }
 
-  // Cleanup de datos expirados (para ejecutar periódicamente)
-  async cleanup() {
+  /**
+   * Cleanup de datos expirados (para ejecutar periódicamente)
+   */
+  public async cleanup(): Promise<void> {
     try {
       const keys = await this.redis.keys("rate_limit:*");
-      const expiredKeys = [];
+      const expiredKeys: string[] = [];
 
       for (const key of keys) {
         const ttl = await this.redis.ttl(key);
@@ -362,17 +466,19 @@ class RateLimiter {
     }
   }
 
-  // Obtener estadísticas de rate limiting
-  async getStats(identifier) {
+  /**
+   * Obtener estadísticas de rate limiting
+   */
+  public async getStats(identifier: string): Promise<RateLimitStats> {
     try {
       const keys = await this.redis.keys(`rate_limit:${identifier}:*`);
-      const stats = {};
+      const stats: RateLimitStats = {};
 
       for (const key of keys) {
         const value = await this.redis.get(key);
         const ttl = await this.redis.ttl(key);
         stats[key] = {
-          current: parseInt(value),
+          current: parseInt(value || "0"),
           ttl: ttl,
         };
       }
@@ -384,8 +490,10 @@ class RateLimiter {
     }
   }
 
-  // Resetear límites para un identificador específico
-  async resetLimits(identifier) {
+  /**
+   * Resetear límites para un identificador específico
+   */
+  public async resetLimits(identifier: string): Promise<void> {
     try {
       const keys = await this.redis.keys(`rate_limit:${identifier}:*`);
       if (keys.length > 0) {
@@ -398,4 +506,6 @@ class RateLimiter {
   }
 }
 
-module.exports = RateLimiter;
+// También exportar para compatibilidad con CommonJS
+export default RateLimiter;
+module.exports = { RateLimiter };

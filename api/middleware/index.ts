@@ -1,23 +1,38 @@
 import { Request, Response, NextFunction } from "express";
 
-// Temporalmente usar require para módulos JS mientras migramos
-const RateLimiter = require("./rateLimiter");
-const SpamDetector = require("./spamDetector");
-const {
+// Importar solo el RateLimiter
+import { RateLimiter } from "./rateLimiter";
+import {
   startCleanupSchedule,
   addRateLimitHeaders,
-} = require("./rateLimitConfig");
+  applyRateLimiting,
+} from "./rateLimitConfig";
 import redisClient from "../config/redis";
 
-// Instanciar detectores
-const rateLimiter = new RateLimiter(redisClient);
-const spamDetector = new SpamDetector(redisClient);
+// Tipos exportados para evitar errores de compilación
+export interface RateLimitStats {
+  [key: string]: {
+    current: number;
+    ttl: number;
+  };
+}
+
+// Variables para instancias que se crearán después de conectar Redis
+let rateLimiter: RateLimiter | null = null;
+
+// Función para inicializar el rate limiter una vez que Redis esté conectado
+const initializeDetectors = () => {
+  if (!rateLimiter && redisClient.isConnected) {
+    try {
+      rateLimiter = new RateLimiter(redisClient.getClient());
+    } catch (error) {
+      console.error("Error initializing RateLimiter:", error);
+    }
+  }
+};
 
 interface ProtectionOptions {
   enableRateLimit?: boolean;
-  enableSpamDetection?: boolean;
-  enableIPDetection?: boolean;
-  enableSpammerBlock?: boolean;
   rateLimitConfig?: {
     type?: string;
     action?: string;
@@ -26,42 +41,19 @@ interface ProtectionOptions {
 
 // Middleware combinado para protección completa
 const createProtectionMiddleware = (options: ProtectionOptions = {}) => {
-  const {
-    enableRateLimit = true,
-    enableSpamDetection = true,
-    enableIPDetection = true,
-    enableSpammerBlock = true,
-    rateLimitConfig = {},
-  } = options;
+  const { enableRateLimit = true, rateLimitConfig = {} } = options;
 
   const middlewares: any[] = [];
 
   // Agregar rate limiting si está habilitado
   if (enableRateLimit) {
     const { type = "authenticated", action = null } = rateLimitConfig;
-    const { applyRateLimiting } = require("./rateLimitConfig");
-    middlewares.push(applyRateLimiting(type, action));
+    middlewares.push(applyRateLimiting(type, action || undefined));
   }
 
-  // Agregar detección de IP si está habilitada
-  if (enableIPDetection) {
-    middlewares.push(spamDetector.createIPDetectionMiddleware());
-  }
-
-  // Agregar bloqueo de spammers si está habilitado
-  if (enableSpammerBlock) {
-    middlewares.push(spamDetector.createSpammerBlockMiddleware());
-  }
-
-  // Agregar detección de spam si está habilitada
-  if (enableSpamDetection) {
-    middlewares.push(spamDetector.createSpamDetectionMiddleware());
-  }
-
-  // Middleware combinado
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      // Ejecutar cada middleware secuencialmente
+      // Ejecuta cada middleware secuencialmente
       for (const middleware of middlewares) {
         await new Promise<void>((resolve, reject) => {
           middleware(req, res, (error?: any) => {
@@ -82,62 +74,44 @@ const createProtectionMiddleware = (options: ProtectionOptions = {}) => {
 
 // Configuraciones predefinidas para diferentes tipos de endpoints
 const protectionConfigs = {
-  // Protección básica para endpoints públicos
+  // Protección básica para endpoints públicos (3 requests por 10 minutos)
   public: createProtectionMiddleware({
     enableRateLimit: true,
-    enableSpamDetection: false,
-    enableIPDetection: true,
-    enableSpammerBlock: false,
     rateLimitConfig: { type: "public" },
   }),
 
-  // Protección para autenticación
+  // Protección para autenticación (3 requests por 10 minutos)
   auth: createProtectionMiddleware({
     enableRateLimit: true,
-    enableSpamDetection: false,
-    enableIPDetection: true,
-    enableSpammerBlock: false,
     rateLimitConfig: { type: "auth" },
   }),
 
-  // Protección estándar para usuarios autenticados
+  // Protección estándar para usuarios autenticados (3 requests por 10 minutos)
   authenticated: createProtectionMiddleware({
     enableRateLimit: true,
-    enableSpamDetection: false,
-    enableIPDetection: true,
-    enableSpammerBlock: true,
     rateLimitConfig: { type: "authenticated" },
   }),
 
-  // Protección para creación de contenido
+  // Protección para creación de contenido (3 requests por 10 minutos)
   contentCreation: createProtectionMiddleware({
     enableRateLimit: true,
-    enableSpamDetection: true,
-    enableIPDetection: true,
-    enableSpammerBlock: true,
     rateLimitConfig: { type: "criticalAction", action: "createTweet" },
   }),
 
-  // Protección para acciones sociales (like, retweet, follow)
+  // Protección para acciones sociales (3 requests por 10 minutos)
   socialAction: createProtectionMiddleware({
     enableRateLimit: true,
-    enableSpamDetection: false,
-    enableIPDetection: true,
-    enableSpammerBlock: true,
     rateLimitConfig: { type: "authenticated" },
   }),
 
-  // Protección para operaciones masivas
+  // Protección para operaciones masivas (1 request por 10 minutos)
   bulkOperation: createProtectionMiddleware({
     enableRateLimit: true,
-    enableSpamDetection: false,
-    enableIPDetection: true,
-    enableSpammerBlock: true,
     rateLimitConfig: { type: "bulkOperation" },
   }),
 };
 
-// Función para aplicar protección específica
+// PROCESO DE SELECCION PARA LA PROTECCION ESPECIFICA
 const applyProtection = (
   type: keyof typeof protectionConfigs,
   customConfig: ProtectionOptions = {}
@@ -179,13 +153,6 @@ const monitoringMiddleware = async (
       );
     }
 
-    // Registrar errores de spam
-    if (res.statusCode === 403 && res.get("X-Spam-Detection")) {
-      console.warn(
-        `Spam detected: ${req.method} ${req.path} from ${ip} (User: ${userId})`
-      );
-    }
-
     return originalSend.call(this, body);
   };
 
@@ -193,37 +160,37 @@ const monitoringMiddleware = async (
 };
 
 // Función para obtener estadísticas de protección
-const getProtectionStats = async (userId?: string) => {
+const getProtectionStats = async (
+  userId?: string
+): Promise<{
+  rateLimitStats: RateLimitStats;
+  timestamp: string;
+}> => {
   try {
-    const [rateLimitStats, spamStats] = await Promise.all([
-      rateLimiter.getStats(userId ? `user:${userId}` : "global"),
-      spamDetector.getSpamStats(userId),
-    ]);
+    initializeDetectors();
+
+    const rateLimitStats = rateLimiter
+      ? await rateLimiter.getStats(userId ? `user:${userId}` : "global")
+      : {};
 
     return {
       rateLimitStats,
-      spamStats,
       timestamp: new Date().toISOString(),
     };
   } catch (error) {
     console.error("Error getting protection stats:", error);
     return {
       rateLimitStats: {},
-      spamStats: { status: "unknown" },
       timestamp: new Date().toISOString(),
     };
   }
 };
 
-// Función para reiniciar límites y marcas de spam
+// Función para reiniciar límites
 const resetUserProtection = async (userId: string): Promise<boolean> => {
   try {
-    await Promise.all([
-      rateLimiter.resetLimits(`user:${userId}`),
-      redisClient.delSingle(`spammer:${userId}`),
-      redisClient.delSingle(`spam_attempts:${userId}`),
-      redisClient.delSingle(`suspicious_activity:${userId}`),
-    ]);
+    initializeDetectors();
+    await rateLimiter?.resetLimits(`user:${userId}`);
 
     console.log(`Protection reset for user ${userId}`);
     return true;
@@ -238,28 +205,11 @@ const initializeProtection = () => {
   // Iniciar limpieza automática
   startCleanupSchedule();
 
-  // Configurar limpieza adicional para spam detector
-  setInterval(async () => {
-    try {
-      // Limpiar datos antiguos de spam
-      const keys = await redisClient.keys("spam_attempts:*");
-      for (const key of keys) {
-        const ttl = await redisClient.ttl(key);
-        if (ttl <= 0) {
-          await redisClient.delSingle(key);
-        }
-      }
-    } catch (error) {
-      console.error("Error cleaning spam data:", error);
-    }
-  }, 60 * 60 * 1000); // Cada hora
-
   console.log("Protection system initialized");
 };
 
 export {
   rateLimiter,
-  spamDetector,
   protectionConfigs,
   applyProtection,
   createProtectionMiddleware,
