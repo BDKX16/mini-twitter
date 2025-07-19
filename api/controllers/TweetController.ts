@@ -355,16 +355,20 @@ export class TweetController {
   }
 
   /**
-   * Get mentions for a user
+   * Get mentions for authenticated user
    */
   async getMentions(
-    req: Request,
+    req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
   ): Promise<void> {
     try {
-      const { userId } = req.params;
+      const userId = req.user?.id;
       const { limit = 20, skip = 0 } = req.query;
+
+      if (!userId) {
+        throw new ValidationError("User not authenticated");
+      }
 
       if (!isValidObjectId(userId)) {
         throw new ValidationError("Invalid user ID");

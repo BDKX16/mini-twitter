@@ -2,7 +2,7 @@ import express from "express";
 // Importar middleware y controladores
 const { applyProtection, monitoringMiddleware } = require("../middleware");
 const { addRateLimitHeaders } = require("../middleware/rateLimitConfig");
-const { checkAuth, optionalAuth } = require("../middleware/authMiddleware");
+import { checkAuth, optionalAuth } from "../middleware/authMiddleware";
 const { UserController } = require("../controllers/UserController");
 const { TweetController } = require("../controllers/TweetController");
 const { LikeController } = require("../controllers/LikeController");

@@ -12,6 +12,7 @@ import {
   isValidObjectId,
 } from "../types/controllers";
 import { ValidationError } from "../utils/errors";
+import { generateToken } from "../middleware/authMiddleware";
 
 export class UserController {
   private userService: UserService;
@@ -61,7 +62,6 @@ export class UserController {
       const user = await this.userService.createUser(userData);
 
       // Generar token JWT automáticamente al registrarse
-      const { generateToken } = require("../middleware/authMiddleware");
       const token = generateToken({
         id: user._id?.toString() || "",
         email: user.email,
@@ -288,7 +288,6 @@ export class UserController {
       console.log("result.user.id:", (result.user as any).id);
 
       // Generar token JWT con manejo más robusto del ID
-      const { generateToken } = require("../middleware/authMiddleware");
       const userId =
         result.user._id?.toString() ||
         (result.user as any).id?.toString() ||
