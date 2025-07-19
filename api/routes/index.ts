@@ -1,7 +1,8 @@
 import express from "express";
-// Temporalmente usar require para middleware y controladores
+// Importar middleware y controladores
 const { applyProtection, monitoringMiddleware } = require("../middleware");
 const { addRateLimitHeaders } = require("../middleware/rateLimitConfig");
+const { checkAuth, optionalAuth } = require("../middleware/authMiddleware");
 const { UserController } = require("../controllers/UserController");
 const { TweetController } = require("../controllers/TweetController");
 const { LikeController } = require("../controllers/LikeController");
@@ -65,34 +66,39 @@ router.get(
   userController.getUserStats.bind(userController)
 );
 
-// Usuarios autenticados - Protección estándar
+// Usuarios autenticados - Protección estándar + JWT requerido
 router.get(
   "/users/me",
   applyProtection("authenticated"),
+  checkAuth,
   userController.getCurrentUser.bind(userController)
 );
 
 router.put(
   "/users/me",
   applyProtection("authenticated"),
+  checkAuth,
   userController.updateProfile.bind(userController)
 );
 
 router.post(
   "/users/me/password",
   applyProtection("authenticated"),
+  checkAuth,
   userController.changePassword.bind(userController)
 );
 
 router.post(
   "/users/me/deactivate",
   applyProtection("authenticated"),
+  checkAuth,
   userController.deactivateAccount.bind(userController)
 );
 
 router.get(
   "/users/me/suggestions",
   applyProtection("authenticated"),
+  checkAuth,
   userController.getSuggestedUsers.bind(userController)
 );
 
@@ -162,40 +168,46 @@ router.get(
   tweetController.getHashtagTweets.bind(tweetController)
 );
 
-// Tweets autenticados - Protección con detección de spam
+// Tweets autenticados - Rate limiting + JWT requerido
 router.post(
   "/tweets",
   applyProtection("contentCreation"),
+  checkAuth,
   tweetController.createTweet.bind(tweetController)
 );
 
 router.put(
   "/tweets/:tweetId",
   applyProtection("contentCreation"),
+  checkAuth,
   tweetController.updateTweet.bind(tweetController)
 );
 
 router.delete(
   "/tweets/:tweetId",
   applyProtection("authenticated"),
+  checkAuth,
   tweetController.deleteTweet.bind(tweetController)
 );
 
 router.post(
   "/tweets/:tweetId/reply",
   applyProtection("contentCreation"),
+  checkAuth,
   tweetController.replyToTweet.bind(tweetController)
 );
 
 router.get(
   "/tweets/me/timeline",
   applyProtection("authenticated"),
+  checkAuth, // JWT requerido
   tweetController.getTimeline.bind(tweetController)
 );
 
 router.get(
   "/tweets/me/mentions",
   applyProtection("authenticated"),
+  checkAuth, // JWT requerido
   tweetController.getMentions.bind(tweetController)
 );
 
@@ -213,18 +225,21 @@ router.get(
 router.post(
   "/tweets/:tweetId/like",
   applyProtection("socialAction"),
+  checkAuth,
   likeController.likeTweet.bind(likeController)
 );
 
 router.delete(
   "/tweets/:tweetId/like",
   applyProtection("socialAction"),
+  checkAuth,
   likeController.unlikeTweet.bind(likeController)
 );
 
 router.post(
   "/tweets/:tweetId/like/toggle",
   applyProtection("socialAction"),
+  checkAuth,
   likeController.toggleLike.bind(likeController)
 );
 
@@ -238,12 +253,14 @@ router.get(
 router.post(
   "/tweets/:tweetId/retweet",
   applyProtection("socialAction"),
+  checkAuth,
   retweetController.retweet.bind(retweetController)
 );
 
 router.post(
   "/tweets/:tweetId/quote",
   applyProtection("contentCreation"),
+  checkAuth,
   retweetController.quoteRetweet.bind(retweetController)
 );
 
@@ -251,25 +268,29 @@ router.post(
 router.post(
   "/users/:userId/follow",
   applyProtection("socialAction"),
+  checkAuth,
   followController.followUser.bind(followController)
 );
 
 router.post(
   "/users/follow/bulk",
   applyProtection("bulkOperation"),
+  checkAuth,
   followController.bulkFollow.bind(followController)
 );
 
-// Timeline - Protección estándar
+// Timeline - Autenticación opcional para contenido personalizado
 router.get(
   "/timeline/home",
   applyProtection("authenticated"),
+  checkAuth,
   timelineController.getHomeTimeline.bind(timelineController)
 );
 
 router.get(
   "/timeline/public",
   applyProtection("public"),
+  optionalAuth, // JWT opcional para personalizar si está logueado
   timelineController.getPublicTimeline.bind(timelineController)
 );
 

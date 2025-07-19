@@ -60,17 +60,28 @@ export class UserController {
 
       const user = await this.userService.createUser(userData);
 
+      // Generar token JWT automáticamente al registrarse
+      const { generateToken } = require("../middleware/authMiddleware");
+      const token = generateToken({
+        id: user._id?.toString() || "",
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      });
+
       res.status(201).json({
         success: true,
         message: "User registered successfully",
         data: {
           user: {
-            id: user._id,
+            id: user._id?.toString() || "",
             firstName: user.firstName,
             lastName: user.lastName,
             email: user.email,
             createdAt: user.createdAt,
           },
+          token: token,
+          expiresIn: "7d",
         },
       });
     } catch (error) {
@@ -259,7 +270,7 @@ export class UserController {
   }
 
   /**
-   * Login user
+   * Login user y generar token JWT
    */
   async login(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
@@ -271,9 +282,40 @@ export class UserController {
 
       const result = await this.userService.loginUser(email, password);
 
+      // Debug: verificar qué contiene result.user
+      console.log("Login result.user:", result.user);
+      console.log("result.user._id:", result.user._id);
+      console.log("result.user.id:", (result.user as any).id);
+
+      // Generar token JWT con manejo más robusto del ID
+      const { generateToken } = require("../middleware/authMiddleware");
+      const userId =
+        result.user._id?.toString() ||
+        (result.user as any).id?.toString() ||
+        "";
+
+      console.log("Generated userId for token:", userId);
+
+      const token = generateToken({
+        id: userId,
+        email: result.user.email,
+        firstName: result.user.firstName,
+        lastName: result.user.lastName,
+      });
+
       res.json({
         success: true,
-        data: result,
+        message: "Login successful",
+        data: {
+          user: {
+            id: userId,
+            email: result.user.email,
+            firstName: result.user.firstName,
+            lastName: result.user.lastName,
+          },
+          token: token,
+          expiresIn: "7d",
+        },
       });
     } catch (error) {
       next(error);

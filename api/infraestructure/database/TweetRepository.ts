@@ -4,7 +4,7 @@
  */
 
 import { BaseRepository } from "./BaseRepository";
-import { Tweet } from "../../models";
+import { Tweet, Follow } from "../../models";
 import { ITweetRepository, BaseQueryOptions } from "../../types/repositories";
 import { MongooseObjectId, ITweetDocument } from "../../types/models";
 import { AppError, NotFoundError } from "../../utils/errors";
@@ -226,26 +226,30 @@ export class TweetRepository
     options: BaseQueryOptions = {}
   ): Promise<ITweetDocument[]> {
     try {
+      // First, get the list of users that this user follows
+      const followedUsers = await Follow.find({ follower: userId }).select(
+        "following"
+      );
+      const followingIds = followedUsers.map((follow: any) => follow.following);
+
+      // Include the user's own tweets as well
+      const authorIds = [...followingIds, userId];
+
+      console.log("User:", userId.toString());
+      console.log(
+        "Following IDs:",
+        followingIds.map((id: any) => id.toString())
+      );
+      console.log(
+        "All author IDs:",
+        authorIds.map((id: any) => id.toString())
+      );
+
+      // Now get tweets from these users
       const pipeline = [
-        // Get users that this user follows
-        {
-          $lookup: {
-            from: "follows",
-            localField: userId,
-            foreignField: "follower",
-            as: "following",
-          },
-        },
-        {
-          $unwind: "$following",
-        },
-        // Get tweets from followed users + own tweets
         {
           $match: {
-            $or: [
-              { author: { $in: ["$following.following"] } },
-              { author: userId },
-            ],
+            author: { $in: authorIds },
           },
         },
         {
@@ -264,12 +268,12 @@ export class TweetRepository
         },
       ];
 
-      if (options.limit) {
-        pipeline.push({ $limit: options.limit } as any);
+      if (options.skip) {
+        pipeline.push({ $skip: options.skip } as any);
       }
 
-      if (options.skip) {
-        pipeline.splice(-1, 0, { $skip: options.skip } as any);
+      if (options.limit) {
+        pipeline.push({ $limit: options.limit } as any);
       }
 
       const result = await this.aggregate(pipeline);
@@ -306,29 +310,20 @@ export class TweetRepository
     options: BaseQueryOptions = {}
   ): Promise<ITweetDocument[]> {
     try {
+      // First, get the list of users that this user follows
+      const followedUsers = await Follow.find({ follower: userId }).select(
+        "following"
+      );
+      const followingIds = followedUsers.map((follow: any) => follow.following);
+
+      // Include the user's own tweets as well
+      const authorIds = [...followingIds, userId];
+
+      // Now get tweets from these users
       const pipeline = [
         {
-          $lookup: {
-            from: "follows",
-            localField: userId,
-            foreignField: "follower",
-            as: "userFollows",
-          },
-        },
-        {
-          $addFields: {
-            followingIds: {
-              $map: {
-                input: "$userFollows",
-                as: "follow",
-                in: "$$follow.following",
-              },
-            },
-          },
-        },
-        {
           $match: {
-            $or: [{ author: { $in: "$followingIds" } }, { author: userId }],
+            author: { $in: authorIds },
           },
         },
         {
@@ -366,29 +361,19 @@ export class TweetRepository
    */
   async countHomeTimelineTweets(userId: MongooseObjectId): Promise<number> {
     try {
+      // First, get the list of users that this user follows
+      const followedUsers = await Follow.find({ follower: userId }).select(
+        "following"
+      );
+      const followingIds = followedUsers.map((follow: any) => follow.following);
+
+      // Include the user's own tweets as well
+      const authorIds = [...followingIds, userId];
+
       const pipeline = [
         {
-          $lookup: {
-            from: "follows",
-            localField: userId,
-            foreignField: "follower",
-            as: "userFollows",
-          },
-        },
-        {
-          $addFields: {
-            followingIds: {
-              $map: {
-                input: "$userFollows",
-                as: "follow",
-                in: "$$follow.following",
-              },
-            },
-          },
-        },
-        {
           $match: {
-            $or: [{ author: { $in: "$followingIds" } }, { author: userId }],
+            author: { $in: authorIds },
           },
         },
         {
