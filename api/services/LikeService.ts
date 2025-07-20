@@ -211,6 +211,182 @@ export class LikeService implements IBaseService {
   }
 
   /**
+   * Check if user has liked a tweet (alias for better naming)
+   */
+  async isLiked(
+    userId: MongooseObjectId,
+    tweetId: MongooseObjectId
+  ): Promise<boolean> {
+    return await this.hasUserLikedTweet(userId, tweetId);
+  }
+
+  /**
+   * Get recent likes activity for a user
+   */
+  async getRecentLikesActivity(
+    userId: MongooseObjectId,
+    hours: number = 24,
+    limit: number = 20
+  ): Promise<any[]> {
+    const user = await this.userRepository.findById(userId);
+    if (!user) {
+      throw new NotFoundError("User not found");
+    }
+
+    // Get user's recent likes
+    const userLikes = await this.likeRepository.findByUser(userId, {
+      limit,
+      sort: { createdAt: -1 },
+    });
+
+    // Filter by timeframe
+    const cutoffDate = new Date(Date.now() - hours * 60 * 60 * 1000);
+    const recentLikes = userLikes.filter(
+      (like) => like.createdAt && like.createdAt >= cutoffDate
+    );
+
+    return recentLikes.map((like: any) => ({
+      likeId: like._id,
+      tweetId: like.tweet._id,
+      likedAt: like.createdAt,
+      tweet: {
+        content: like.tweet.content,
+        author: like.tweet.author,
+        createdAt: like.tweet.createdAt,
+      },
+    }));
+  }
+
+  /**
+   * Get trending tweets by likes in a timeframe
+   */
+  async getTrendingByLikes(
+    timeframe: number = 24,
+    limit: number = 10,
+    period: string = "hours"
+  ): Promise<any[]> {
+    // Use repository method directly for trending
+    const tweets = await this.likeRepository.getMostLikedTweets(limit);
+    return tweets;
+  }
+
+  /**
+   * Bulk like operation
+   */
+  async bulkLike(
+    userId: MongooseObjectId,
+    tweetIds: MongooseObjectId[]
+  ): Promise<{
+    successful: any[];
+    failed: any[];
+    totalProcessed: number;
+  }> {
+    const user = await this.userRepository.findById(userId);
+    if (!user) {
+      throw new NotFoundError("User not found");
+    }
+
+    const successful: any[] = [];
+    const failed: any[] = [];
+
+    for (const tweetId of tweetIds) {
+      try {
+        // Check if tweet exists
+        const tweet = await this.tweetRepository.findById(tweetId);
+        if (!tweet) {
+          failed.push({
+            tweetId,
+            error: "Tweet not found",
+          });
+          continue;
+        }
+
+        // Check if already liked
+        const existingLike = await this.likeRepository.findByUserAndTweet(
+          userId,
+          tweetId
+        );
+        if (existingLike) {
+          failed.push({
+            tweetId,
+            error: "Already liked",
+          });
+          continue;
+        }
+
+        // Create like
+        const like = await this.likeRepository.create({
+          user: userId,
+          tweet: tweetId,
+          createdAt: new Date(),
+        } as Partial<ILikeDocument>);
+
+        successful.push({
+          tweetId,
+          likeId: like._id,
+          likedAt: like.createdAt,
+        });
+      } catch (error) {
+        failed.push({
+          tweetId,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    }
+
+    return {
+      successful,
+      failed,
+      totalProcessed: tweetIds.length,
+    };
+  }
+
+  /**
+   * Get likes activity feed for user timeline
+   */
+  async getLikesActivityFeed(
+    userId: MongooseObjectId,
+    options: ServiceOptions = {}
+  ): Promise<{
+    activities: any[];
+    totalActivities: number;
+    userId: MongooseObjectId;
+  }> {
+    const { limit = 20, skip = 0 } = options;
+
+    const user = await this.userRepository.findById(userId);
+    if (!user) {
+      throw new NotFoundError("User not found");
+    }
+
+    // Get all likes for activity feed
+    const activities = await this.likeRepository.findByUser(userId, {
+      limit,
+      skip,
+      sort: { createdAt: -1 },
+    });
+
+    const totalActivities = await this.likeRepository.countByUser(userId);
+
+    return {
+      activities: activities.map((activity: any) => ({
+        activityId: activity._id,
+        userId: activity.user,
+        tweetId: activity.tweet._id,
+        tweetInfo: {
+          content: activity.tweet.content,
+          authorId: activity.tweet.author,
+          createdAt: activity.tweet.createdAt,
+        },
+        likedAt: activity.createdAt,
+        type: "like",
+      })),
+      totalActivities,
+      userId,
+    };
+  }
+
+  /**
    * Check if user has liked a tweet
    */
   async hasUserLikedTweet(
@@ -219,14 +395,6 @@ export class LikeService implements IBaseService {
   ): Promise<boolean> {
     const like = await this.likeRepository.findByUserAndTweet(userId, tweetId);
     return like !== null;
-  }
-
-  /**
-   * Get most liked tweets
-   */
-  async getMostLikedTweets(limit: number = 10): Promise<any[]> {
-    const tweets = await this.likeRepository.getMostLikedTweets(limit);
-    return tweets;
   }
 
   /**
@@ -252,6 +420,14 @@ export class LikeService implements IBaseService {
     }
 
     return await this.likeRepository.countByTweet(tweetId);
+  }
+
+  /**
+   * Get most liked tweets
+   */
+  async getMostLikedTweets(limit: number = 10): Promise<any[]> {
+    const tweets = await this.likeRepository.getMostLikedTweets(limit);
+    return tweets;
   }
 
   /**

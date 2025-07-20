@@ -39,84 +39,84 @@ const createLazyRateLimiter = (method: string, ...args: any[]) => {
   };
 };
 
-// Rate limiters predefinidos - CONFIGURACIÓN ACTUALIZADA: 3 requests, 10 minutos lockout
+// Rate limiters predefinidos - CONFIGURACIÓN ACTUALIZADA: 50 requests, 10 minutos lockout
 export const rateLimiters = {
-  // Rate limiter general por IP (3 requests por 10 minutos)
-  general: createLazyRateLimiter("createIPRateLimiter", 10 * 60 * 1000, 3),
+  // Rate limiter general por IP (50 requests por 10 minutos)
+  general: createLazyRateLimiter("createIPRateLimiter", 10 * 60 * 1000, 50),
 
-  // Rate limiter para usuarios autenticados (3 requests por 10 minutos)
+  // Rate limiter para usuarios autenticados (50 requests por 10 minutos)
   authenticated: createLazyRateLimiter(
     "createUserRateLimiter",
     10 * 60 * 1000,
-    3
+    50
   ),
 
-  // Rate limiter estricto para autenticación (3 requests por 10 minutos)
-  auth: createLazyRateLimiter("createAuthRateLimiter", 10 * 60 * 1000, 3),
+  // Rate limiter estricto para autenticación (50 requests por 10 minutos)
+  auth: createLazyRateLimiter("createAuthRateLimiter", 10 * 60 * 1000, 50),
 
-  // Rate limiter progresivo para usuarios problemáticos (3 requests por 10 minutos)
+  // Rate limiter progresivo para usuarios problemáticos (50 requests por 10 minutos)
   progressive: createLazyRateLimiter(
     "createProgressiveRateLimiter",
     10 * 60 * 1000,
-    3
+    50
   ),
 
-  // Rate limiters específicos por acción - TODOS CON 3 requests máximo, 10 minutos lockout
+  // Rate limiters específicos por acción - TODOS CON 50 requests máximo, 10 minutos lockout
   actions: {
-    // Crear tweets (3 por 10 minutos)
+    // Crear tweets (50 por 10 minutos)
     createTweet: createLazyRateLimiter(
       "createActionRateLimiter",
       "tweet",
       10 * 60 * 1000,
-      3
+      50
     ),
 
-    // Likes (3 por 10 minutos)
+    // Likes (50 por 10 minutos)
     like: createLazyRateLimiter(
       "createActionRateLimiter",
       "like",
       10 * 60 * 1000,
-      3
+      50
     ),
 
-    // Retweets (3 por 10 minutos)
+    // Retweets (50 por 10 minutos)
     retweet: createLazyRateLimiter(
       "createActionRateLimiter",
       "retweet",
       10 * 60 * 1000,
-      3
+      50
     ),
 
-    // Follows (3 por 10 minutos)
+    // Follows (50 por 10 minutos)
     follow: createLazyRateLimiter(
       "createActionRateLimiter",
       "follow",
       10 * 60 * 1000,
-      3
+      50
     ),
 
-    // Búsquedas (3 por 10 minutos)
+    // Búsquedas (50 por 10 minutos)
     search: createLazyRateLimiter(
       "createActionRateLimiter",
       "search",
       10 * 60 * 1000,
-      3
+      50
     ),
 
-    // Actualización de perfil (3 por 10 minutos)
+    // Actualización de perfil (50 por 10 minutos)
     updateProfile: createLazyRateLimiter(
       "createActionRateLimiter",
       "update_profile",
       10 * 60 * 1000,
-      3
+      50
     ),
 
-    // Cambio de contraseña (3 por 10 minutos)
+    // Cambio de contraseña (50 por 10 minutos)
     changePassword: createLazyRateLimiter(
       "createActionRateLimiter",
       "change_password",
       10 * 60 * 1000,
-      3
+      50
     ),
 
     // Bulk operations (1 por 10 minutos - más restrictivo)
@@ -134,30 +134,30 @@ export const rateLimiters = {
     ),
   },
 
-  // Rate limiters por endpoint - TODOS CON 3 requests máximo, 10 minutos lockout
+  // Rate limiters por endpoint - TODOS CON 50 requests máximo, 10 minutos lockout
   endpoints: {
-    // Timeline endpoints (3 por 10 minutos)
+    // Timeline endpoints (50 por 10 minutos)
     timeline: createLazyRateLimiter(
       "createEndpointRateLimiter",
       "timeline",
       10 * 60 * 1000,
-      3
+      50
     ),
 
-    // User registration (3 por 10 minutos)
+    // User registration (50 por 10 minutos)
     register: createLazyRateLimiter(
       "createEndpointRateLimiter",
       "register",
       10 * 60 * 1000,
-      3
+      50
     ),
 
-    // Password reset (3 por 10 minutos)
+    // Password reset (50 por 10 minutos)
     passwordReset: createLazyRateLimiter(
       "createEndpointRateLimiter",
       "password_reset",
       10 * 60 * 1000,
-      3
+      50
     ),
   },
 };

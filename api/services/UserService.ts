@@ -29,8 +29,11 @@ export class UserService implements IBaseService {
    */
   async createUser(userData: CreateUserData): Promise<SanitizedUser> {
     try {
+      console.log("UserService.createUser - userData:", userData);
+
       // Validate required data
       this.validateUserData(userData);
+      console.log("UserService.createUser - validation passed");
 
       // Check if username already exists
       const existingUser = await this.userRepository.findByUsername(
@@ -39,13 +42,19 @@ export class UserService implements IBaseService {
       if (existingUser) {
         throw new ConflictError("Username already exists");
       }
+      console.log("UserService.createUser - username available");
 
       // Create user
-      const user = await this.userRepository.create({
+      const createData = {
         ...userData,
         confirmed: false,
         createdAt: new Date(),
-      } as Partial<IUserDocument>);
+      } as Partial<IUserDocument>;
+
+      console.log("UserService.createUser - createData:", createData);
+
+      const user = await this.userRepository.create(createData);
+      console.log("UserService.createUser - user created:", user);
 
       return this.sanitizeUser(user);
     } catch (error: any) {
@@ -259,6 +268,7 @@ export class UserService implements IBaseService {
     delete (sanitized as any).password;
     delete (sanitized as any).resetPasswordToken;
     delete (sanitized as any).resetPasswordExpires;
+    delete (sanitized as any).__v;
 
     return sanitized as SanitizedUser;
   }
@@ -318,8 +328,7 @@ export class UserService implements IBaseService {
    * Login user with username and password
    */
   async loginUser(
-    username: string,
-    password: string
+    username: string
   ): Promise<{ user: SanitizedUser; token: string }> {
     try {
       const user = await this.userRepository.findByUsername(username);
@@ -327,13 +336,9 @@ export class UserService implements IBaseService {
         throw new NotFoundError("User not found");
       }
 
-      // Here you would validate password (assuming password is hashed)
-      // For now, just returning the user
-      const token = "temporary-token"; // In real app, generate JWT token
-
       return {
         user: this.sanitizeUser(user),
-        token,
+        token: "temporary-token", // In real app, generate JWT token
       };
     } catch (error) {
       throw error;

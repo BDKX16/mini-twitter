@@ -42,15 +42,15 @@ export class UserController {
       } = req.body;
 
       // Basic validation
-      if (!firstName || !username) {
-        throw new ValidationError("First name and username are required");
+      if (!username) {
+        throw new ValidationError("Username is required");
       }
 
       const userData: CreateUserData = {
-        firstName,
+        firstName: firstName || username, // Use username as first name if not provided
         lastName,
         username,
-        password,
+        password: password || "",
         bio,
         profileImage,
         website,
@@ -271,24 +271,20 @@ export class UserController {
    */
   async login(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { username, password } = req.body;
+      const { username } = req.body;
 
-      if (!username || !password) {
-        throw new ValidationError("Username and password are required");
+      if (!username) {
+        throw new ValidationError("Username is required");
       }
 
-      const result = await this.userService.loginUser(username, password);
+      const result = await this.userService.loginUser(username);
 
       // Debug: verificar qué contiene result.user
       console.log("Login result.user:", result.user);
-      console.log("result.user._id:", result.user._id);
       console.log("result.user.id:", (result.user as any).id);
 
       // Generar token JWT con manejo más robusto del ID
-      const userId =
-        result.user._id?.toString() ||
-        (result.user as any).id?.toString() ||
-        "";
+      const userId = (result.user as any).id?.toString() || "";
 
       console.log("Generated userId for token:", userId);
 

@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { authService } from "@/services";
 
 const navigation = [
   { name: "Inicio", href: "/", icon: Home },
@@ -31,10 +32,7 @@ export function Sidebar() {
   const pathname = usePathname();
 
   const handleLogout = () => {
-    // Remove token from localStorage
-    localStorage.removeItem("token");
-    // Reload the page to trigger layout change
-    window.location.reload();
+    authService.logout();
   };
 
   return (

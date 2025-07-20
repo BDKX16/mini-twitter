@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Timeline } from "@/components/Timeline";
+import { authService } from "@/services";
 
 // Avatares predefinidos
 const PRESET_AVATARS = [
@@ -275,9 +276,10 @@ function CustomImageModal({
 export default function Home() {
   const [username, setUsername] = useState("");
   const [profileImage, setProfileImage] = useState("");
-  const [currentStep, setCurrentStep] = useState(1); // 1: username, 2: profile image
+  const [currentStep, setCurrentStep] = useState(1); // 1: username, 2: profile image (only for new users)
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isCheckingUser, setIsCheckingUser] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
 
@@ -291,8 +293,8 @@ export default function Home() {
 
   // Verificar si el usuario ya está autenticado al cargar la página
   useEffect(() => {
-    const token = localStorage.getItem("authToken");
-    const user = localStorage.getItem("user");
+    const token = localStorage.getItem("token");
+    const user = localStorage.getItem("userData");
 
     if (token && user) {
       try {
@@ -301,8 +303,8 @@ export default function Home() {
         setIsAuthenticated(true);
       } catch (error) {
         // Si hay error parseando, limpiar localStorage
-        localStorage.removeItem("authToken");
-        localStorage.removeItem("user");
+        localStorage.removeItem("token");
+        localStorage.removeItem("userData");
       }
     }
   }, []);
@@ -336,53 +338,35 @@ export default function Home() {
     }
   };
 
-  /**
-   * Función para registrar usuario
-   */
-  const registerUser = async (userData: {
-    username: string;
-    profileImage?: string;
-  }): Promise<any> => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/auth/register`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          firstName: userData.username,
-          lastName: "", // Campo opcional
-          username: userData.username,
-          password: "default123", // Password temporal para demo
-          profileImage: userData.profileImage,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.message || "Error registering user");
-      }
-
-      return result;
-    } catch (error) {
-      console.error("Error registering user:", error);
-      throw error;
-    }
-  };
-
-  const handleUsernameSubmit = (e: React.FormEvent) => {
+  const handleUsernameSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (username.trim()) {
-      console.log("Username:", username);
-      // Iniciar transición al siguiente paso
+    if (!username.trim()) return;
+
+    setIsCheckingUser(true);
+
+    try {
+      // Intentar hacer login directo solo con username
+      const response = await authService.login(username);
+
+      if (response && response.data?.token) {
+        // Login exitoso, guardar datos y marcar como autenticado
+        setUserProfile(response.data.user);
+        setIsAuthenticated(true);
+        // Disparar evento personalizado para que AppLayout se entere del cambio
+        window.dispatchEvent(new Event("authChange"));
+      }
+    } catch (error: any) {
+      console.error("Usuario no existe, proceder al registro:", error);
+      // Usuario no existe, ir al paso de imagen de perfil para registro
       setIsTransitioning(true);
       setTimeout(() => {
         setCurrentStep(2);
-      }, 250); // Punto medio de la animación
+      }, 250);
       setTimeout(() => {
         setIsTransitioning(false);
-      }, 500); // Duración total de la animación
+      }, 500);
+    } finally {
+      setIsCheckingUser(false);
     }
   };
 
@@ -402,7 +386,7 @@ export default function Home() {
 
       // Registrar usuario con la imagen final
       console.log("Registrando usuario...");
-      const result = await registerUser({
+      const result = await authService.register({
         username,
         profileImage: finalProfileImage || undefined,
       });
@@ -411,8 +395,8 @@ export default function Home() {
 
       // Guardar token en localStorage si está disponible
       if (result.data.token) {
-        localStorage.setItem("authToken", result.data.token);
-        localStorage.setItem("user", JSON.stringify(result.data.user));
+        localStorage.setItem("token", result.data.token);
+        localStorage.setItem("userData", JSON.stringify(result.data.user));
         setUserProfile(result.data.user);
         setIsAuthenticated(true);
 
@@ -440,7 +424,7 @@ export default function Home() {
     setIsTransitioning(true);
     setTimeout(() => {
       setCurrentStep(1);
-    }, 250); // Punto medio de la animación
+    }, 250);
     setTimeout(() => {
       setIsTransitioning(false);
     }, 500);
@@ -457,8 +441,8 @@ export default function Home() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("user");
+    localStorage.removeItem("token");
+    localStorage.removeItem("userData");
     setIsAuthenticated(false);
     setUserProfile(null);
     setUsername("");
@@ -471,18 +455,7 @@ export default function Home() {
 
   // Si el usuario está autenticado, mostrar el Timeline
   if (isAuthenticated && userProfile) {
-    return (
-      <>
-        <Timeline />
-        {/* Botón de logout temporal para testing */}
-        <button
-          onClick={handleLogout}
-          className="fixed top-4 right-4 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm transition-colors z-50"
-        >
-          Cerrar sesión
-        </button>
-      </>
-    );
+    return <Timeline />;
   }
 
   return (
@@ -567,10 +540,36 @@ export default function Home() {
 
               <button
                 type="submit"
-                className="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 px-4 rounded-xl transition-colors duration-200 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!username.trim()}
+                className="w-full bg-blue-500 hover:bg-blue-600 text-white font-semibold py-3 px-4 rounded-xl transition-colors duration-200 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                disabled={!username.trim() || isCheckingUser}
               >
-                Continuar
+                {isCheckingUser ? (
+                  <>
+                    <svg
+                      className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    Verificando...
+                  </>
+                ) : (
+                  "Continuar"
+                )}
               </button>
             </form>
           </div>

@@ -33,9 +33,23 @@ export class BaseRepository<T extends Document> implements IBaseRepository<T> {
    */
   async create(data: Partial<T>): Promise<T> {
     try {
+      console.log(
+        `BaseRepository.create - Creating ${this.modelName} with data:`,
+        data
+      );
       const document = new this.model(data);
-      return await document.save();
+      console.log(`BaseRepository.create - Document created, saving...`);
+      const result = await document.save();
+      console.log(
+        `BaseRepository.create - Document saved successfully:`,
+        result
+      );
+      return result;
     } catch (error: any) {
+      console.error(
+        `BaseRepository.create - Error creating ${this.modelName}:`,
+        error
+      );
       if (error.name === "ValidationError") {
         throw new ValidationError(
           `Validation failed for ${this.modelName}`,

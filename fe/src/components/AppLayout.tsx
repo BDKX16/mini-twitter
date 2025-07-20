@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Sidebar } from "@/components/Sidebar";
+import { authService } from "@/services";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -12,16 +13,15 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Verificar si el usuario está autenticado
-    const token = localStorage.getItem("authToken");
-    setIsAuthenticated(!!token);
+    // Verificar si el usuario está autenticado usando el servicio
+    setIsAuthenticated(authService.isAuthenticated());
     setIsLoading(false);
   }, []);
 
   // Función para escuchar cambios en la autenticación
   useEffect(() => {
     const handleStorageChange = () => {
-      const token = localStorage.getItem("authToken");
+      const token = localStorage.getItem("token");
       setIsAuthenticated(!!token);
     };
 
@@ -30,7 +30,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
     // También escuchar un evento personalizado para cambios internos
     const handleAuthChange = () => {
-      const token = localStorage.getItem("authToken");
+      const token = localStorage.getItem("token");
       setIsAuthenticated(!!token);
     };
 

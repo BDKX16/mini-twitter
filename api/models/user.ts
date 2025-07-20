@@ -14,14 +14,15 @@ const userSchema = new Schema<IUserDocument>(
   {
     username: {
       type: String,
-      required: [true, "Name is required"],
+      required: [true, "Username is required"],
+      unique: true,
       trim: true,
-      maxlength: [100, "Name cannot exceed 100 characters"],
+      maxlength: [100, "Username cannot exceed 100 characters"],
     },
     password: {
       type: String,
-      required: [true, "Password is required"],
-      minlength: [6, "Password must be at least 6 characters long"],
+      required: false,
+      default: "",
     },
     confirmed: {
       type: Boolean,
