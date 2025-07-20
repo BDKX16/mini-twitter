@@ -1,0 +1,55 @@
+version: "3.8"
+
+services:
+  # MongoDB - Base de datos principal
+  mongodb:
+    image: mongo:7
+    container_name: twitter-mongodb-prod
+    ports:
+      - "${MONGO_PORT}:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD}
+      - MONGO_INITDB_DATABASE=${MONGO_DATABASE}
+    volumes:
+      - mongodb_data:/data/db
+    # Comando más simple para evitar problemas de inicialización
+    command:
+      - mongod
+      - --auth
+      - --bind_ip_all
+    networks:
+      - twitter-network
+    restart: unless-stopped
+
+  # Redis - Cache y operaciones en tiempo real
+  redis:
+    image: redis:7-alpine
+    container_name: twitter-redis-prod
+    ports:
+      - "${REDIS_PORT}:6379"
+    command: >
+      redis-server
+      --bind 0.0.0.0
+      --protected-mode no
+      --port 6379
+      --requirepass ${REDIS_PASSWORD}
+      --appendonly yes
+      --maxmemory 1gb
+      --maxmemory-policy allkeys-lru
+      --timeout 0
+      --tcp-keepalive 300
+      --loglevel notice
+    volumes:
+      - redis_data:/data
+    networks:
+      - twitter-network
+    restart: unless-stopped
+
+volumes:
+  mongodb_data:
+  redis_data:
+
+networks:
+  twitter-network:
+    driver: bridge

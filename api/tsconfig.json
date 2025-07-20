@@ -17,7 +17,7 @@
     "emitDecoratorMetadata": true,
     "allowSyntheticDefaultImports": true,
     "moduleResolution": "node",
-    "baseUrl": "./api",
+    "baseUrl": "./",
     "paths": {
       "@/*": ["./*"],
       "@models/*": ["models/*"],
@@ -29,16 +29,10 @@
       "@repositories/*": ["repositories/*"],
       "@infrastructure/*": ["infrastructure/*"]
     },
-    "typeRoots": ["./node_modules/@types", "./api/types"]
+    "typeRoots": ["./node_modules/@types", "./types"]
   },
-  "include": ["api/**/*.ts", "api/**/*.js"],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "**/*.test.ts",
-    "**/*.spec.ts",
-    "fe/**/*"
-  ],
+  "include": ["./**/*.ts", "./**/*.js"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"],
   "ts-node": {
     "require": ["tsconfig-paths/register"]
   }
