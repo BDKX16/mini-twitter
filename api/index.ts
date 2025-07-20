@@ -4,6 +4,7 @@ import cors from "cors";
 import colors from "colors";
 import helmet from "helmet";
 import compression from "compression";
+import path from "path";
 import { Server } from "http";
 import { EventEmitter } from "events";
 
@@ -53,7 +54,13 @@ class TwitterAPI {
         contentSecurityPolicy: {
           directives: {
             defaultSrc: ["'self'"],
-            imgSrc: ["'self'", "data:", "blob:"],
+            imgSrc: [
+              "'self'",
+              "data:",
+              "blob:",
+              "http://localhost:3001",
+              "https://api.dicebear.com",
+            ],
             scriptSrc: ["'self'"],
             styleSrc: ["'self'"],
           },
@@ -111,6 +118,12 @@ class TwitterAPI {
         },
       });
     });
+
+    // Servir archivos estáticos (imágenes subidas)
+    this.app.use(
+      "/uploads",
+      express.static(path.join(process.cwd(), "uploads"))
+    );
 
     // API Routes
     this.app.use("/api", (await import("./routes/index")).default);

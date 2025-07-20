@@ -6,6 +6,10 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Uploaded files (keep directory structure but not files)
+api/uploads/images/*
+!api/uploads/images/.gitkeep
+
 # Runtime data
 pids
 *.pid

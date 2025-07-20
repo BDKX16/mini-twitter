@@ -9,6 +9,7 @@ export { FollowController } from "./FollowController";
 export { LikeController } from "./LikeController";
 export { RetweetController } from "./RetweetController";
 export { TimelineController } from "./TimelineController";
+export { FileUploadController } from "./FileUploadController";
 
 // Export controller types
 export type { AuthenticatedRequest } from "../types/controllers";

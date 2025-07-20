@@ -9,6 +9,7 @@ const { LikeController } = require("../controllers/LikeController");
 const { RetweetController } = require("../controllers/RetweetController");
 const { FollowController } = require("../controllers/FollowController");
 const { TimelineController } = require("../controllers/TimelineController");
+import { FileUploadController } from "../controllers/FileUploadController";
 
 const router = express.Router();
 
@@ -23,6 +24,7 @@ const likeController = new LikeController();
 const retweetController = new RetweetController();
 const followController = new FollowController();
 const timelineController = new TimelineController();
+const fileUploadController = new FileUploadController();
 
 // =============================================
 // RUTAS DE USUARIOS
@@ -46,6 +48,20 @@ router.post(
   applyProtection("auth"),
   userController.reactivateAccount.bind(userController)
 );
+
+// =============================================
+// RUTAS DE ARCHIVOS
+// =============================================
+
+router.post(
+  "/upload/profile-image",
+  applyProtection("authenticated"),
+  fileUploadController.uploadProfileImage.bind(fileUploadController)
+);
+
+// =============================================
+// RUTAS DE USUARIOS
+// =============================================
 
 // Usuarios públicos - Protección básica
 router.get(
