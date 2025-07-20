@@ -163,7 +163,7 @@ export class LikeService implements IBaseService {
         userId: like.user._id,
         firstName: like.user.firstName,
         lastName: like.user.lastName,
-        email: like.user.email,
+        username: like.user.username,
         profileImage: like.user.profileImage,
         likedAt: like.createdAt,
       })),

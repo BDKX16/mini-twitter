@@ -10,7 +10,6 @@ export type MongooseObjectId = Types.ObjectId;
 // User interfaces
 export interface IUser {
   username: string;
-  email: string;
   password: string;
   confirmed: boolean;
   nullDate?: Date | null;
@@ -44,6 +43,7 @@ export interface ITweet {
   retweets: ITweetRetweet[];
   mentions: MongooseObjectId[];
   hashtags: string[];
+  imageUrl?: string;
   parentTweetId?: MongooseObjectId;
   threadId?: MongooseObjectId;
   isDeleted: boolean;
@@ -107,7 +107,6 @@ export interface IPopulatedFollow
 // Model creation interfaces
 export interface IUserModel {
   username: string;
-  email: string;
   password: string;
   confirmed?: boolean;
   firstName?: string;
@@ -141,7 +140,6 @@ export interface IFollowModel {
 // Query interfaces
 export interface IUserQuery {
   _id?: MongooseObjectId;
-  email?: string;
   username?: string;
   confirmed?: boolean;
   isDeleted?: boolean;
@@ -196,7 +194,6 @@ export interface IUserStats {
 export interface IUserResponse {
   id: string;
   username: string;
-  email: string;
   confirmed: boolean;
   createdAt: Date;
   firstName?: string;

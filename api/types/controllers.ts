@@ -9,8 +9,7 @@ import { Types } from "mongoose";
 export interface AuthenticatedRequest extends Omit<Request, "user"> {
   user?: {
     id: string;
-    email: string;
-    username?: string;
+    username: string;
   };
 }
 

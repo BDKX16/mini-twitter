@@ -100,13 +100,13 @@ retweetSchema.statics.findByUser = function (userId: MongooseObjectId) {
   return this.find({ user: userId })
     .sort({ createdAt: -1 })
     .populate("tweet")
-    .populate("user", "name email firstName lastName");
+    .populate("user", "name firstName lastName");
 };
 
 retweetSchema.statics.findByTweet = function (tweetId: MongooseObjectId) {
   return this.find({ tweet: tweetId })
     .sort({ createdAt: -1 })
-    .populate("user", "name email firstName lastName");
+    .populate("user", "name firstName lastName");
 };
 
 retweetSchema.statics.findByUserAndTweet = function (
@@ -125,7 +125,7 @@ retweetSchema.statics.findQuoteRetweets = function (
   }
   return this.find(query)
     .sort({ createdAt: -1 })
-    .populate("user", "name email firstName lastName")
+    .populate("user", "name firstName lastName")
     .populate("tweet");
 };
 
@@ -140,7 +140,7 @@ retweetSchema.statics.findSimpleRetweets = function (
   }
   return this.find(query)
     .sort({ createdAt: -1 })
-    .populate("user", "name email firstName lastName")
+    .populate("user", "name firstName lastName")
     .populate("tweet");
 };
 
@@ -178,7 +178,7 @@ retweetSchema.statics.getRecentRetweets = function (limit: number = 20) {
   return this.find({})
     .sort({ createdAt: -1 })
     .limit(limit)
-    .populate("user", "name email firstName lastName")
+    .populate("user", "name firstName lastName")
     .populate("tweet", "content author createdAt");
 };
 
@@ -335,7 +335,7 @@ retweetSchema.statics.getRetweetTimeline = function (
     .sort({ createdAt: -1 })
     .limit(limit)
     .populate("tweet")
-    .populate("user", "name email firstName lastName");
+    .populate("user", "name firstName lastName");
 };
 
 // Pre-save middleware

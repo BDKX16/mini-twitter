@@ -70,6 +70,11 @@ const tweetSchema = new Schema<ITweetDocument>(
         trim: true,
       },
     ],
+    imageUrl: {
+      type: String,
+      required: false,
+      trim: true,
+    },
     parentTweetId: {
       type: Schema.Types.ObjectId,
       ref: "Tweet",
@@ -197,7 +202,7 @@ tweetSchema.statics.findRecent = function (limit: number = 20) {
   return this.find({ isDeleted: false })
     .sort({ createdAt: -1 })
     .limit(limit)
-    .populate("author", "name email firstName lastName");
+    .populate("author", "name firstName lastName");
 };
 
 tweetSchema.statics.findByMention = function (userId: MongooseObjectId) {

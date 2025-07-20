@@ -86,13 +86,13 @@ followSchema.methods.isFollowingUser = function (
 followSchema.statics.findFollowers = function (userId: MongooseObjectId) {
   return this.find({ following: userId })
     .sort({ createdAt: -1 })
-    .populate("follower", "name email firstName lastName");
+    .populate("follower", "name firstName lastName");
 };
 
 followSchema.statics.findFollowing = function (userId: MongooseObjectId) {
   return this.find({ follower: userId })
     .sort({ createdAt: -1 })
-    .populate("following", "name email firstName lastName");
+    .populate("following", "name firstName lastName");
 };
 
 followSchema.statics.findByFollowerAndFollowing = function (
@@ -125,8 +125,8 @@ followSchema.statics.getRecentFollows = function (limit: number = 20) {
   return this.find({})
     .sort({ createdAt: -1 })
     .limit(limit)
-    .populate("follower", "name email firstName lastName")
-    .populate("following", "name email firstName lastName");
+    .populate("follower", "name firstName lastName")
+    .populate("following", "name firstName lastName");
 };
 
 followSchema.statics.getMutualFollowers = function (
@@ -165,7 +165,6 @@ followSchema.statics.getMutualFollowers = function (
       $project: {
         _id: "$mutualFollower._id",
         name: "$mutualFollower.name",
-        email: "$mutualFollower.email",
         firstName: "$mutualFollower.firstName",
         lastName: "$mutualFollower.lastName",
       },

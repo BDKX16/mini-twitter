@@ -77,7 +77,7 @@ likeSchema.statics.findByUser = function (userId: MongooseObjectId) {
 likeSchema.statics.findByTweet = function (tweetId: MongooseObjectId) {
   return this.find({ tweet: tweetId })
     .sort({ createdAt: -1 })
-    .populate("user", "name email firstName lastName");
+    .populate("user", "name firstName lastName");
 };
 
 likeSchema.statics.findByUserAndTweet = function (
@@ -99,7 +99,7 @@ likeSchema.statics.getRecentLikes = function (limit: number = 20) {
   return this.find({})
     .sort({ createdAt: -1 })
     .limit(limit)
-    .populate("user", "name email firstName lastName")
+    .populate("user", "name firstName lastName")
     .populate("tweet", "content author createdAt");
 };
 

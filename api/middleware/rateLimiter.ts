@@ -403,10 +403,10 @@ export class RateLimiter {
           req.ip ||
           (req as any).connection?.remoteAddress ||
           req.headers["x-forwarded-for"];
-        const { username, email } = req.body;
+        const { username } = req.body;
 
-        // Combinar IP y username/email para prevenir ataques distribuidos
-        const identifier = `${ip}:${username || email || "unknown"}`;
+        // Combinar IP y username para prevenir ataques distribuidos
+        const identifier = `${ip}:${username || "unknown"}`;
         const key = `auth:${identifier}`;
 
         const result = await this.checkRateLimit(

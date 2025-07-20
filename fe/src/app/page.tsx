@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Timeline } from "@/components/Timeline";
 
 // Avatares predefinidos
 const PRESET_AVATARS = [
@@ -277,6 +278,8 @@ export default function Home() {
   const [currentStep, setCurrentStep] = useState(1); // 1: username, 2: profile image
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userProfile, setUserProfile] = useState<any>(null);
 
   // Estados para los modales
   const [showAvatarModal, setShowAvatarModal] = useState(false);
@@ -285,6 +288,24 @@ export default function Home() {
   // API base URL
   const API_BASE_URL =
     process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+
+  // Verificar si el usuario ya está autenticado al cargar la página
+  useEffect(() => {
+    const token = localStorage.getItem("authToken");
+    const user = localStorage.getItem("user");
+
+    if (token && user) {
+      try {
+        const parsedUser = JSON.parse(user);
+        setUserProfile(parsedUser);
+        setIsAuthenticated(true);
+      } catch (error) {
+        // Si hay error parseando, limpiar localStorage
+        localStorage.removeItem("authToken");
+        localStorage.removeItem("user");
+      }
+    }
+  }, []);
 
   /**
    * Función para subir imagen personalizada al servidor
@@ -331,7 +352,6 @@ export default function Home() {
         body: JSON.stringify({
           firstName: userData.username,
           lastName: "", // Campo opcional
-          email: `${userData.username}@minitwitter.local`, // Email temporal
           username: userData.username,
           password: "default123", // Password temporal para demo
           profileImage: userData.profileImage,
@@ -393,18 +413,21 @@ export default function Home() {
       if (result.data.token) {
         localStorage.setItem("authToken", result.data.token);
         localStorage.setItem("user", JSON.stringify(result.data.user));
+        setUserProfile(result.data.user);
+        setIsAuthenticated(true);
+
+        // Disparar evento personalizado para que AppLayout se entere del cambio
+        window.dispatchEvent(new Event("authChange"));
       }
 
-      alert(
+      // No mostrar alert, simplemente transicionar al Timeline
+      console.log(
         `¡Bienvenido @${username}! Tu cuenta ha sido creada exitosamente. ${
           finalProfileImage
             ? "Con imagen de perfil personalizada."
             : "Sin imagen de perfil."
         }`
       );
-
-      // Aquí podrías redirigir al dashboard principal
-      // window.location.href = '/dashboard';
     } catch (error: any) {
       console.error("Error en el registro:", error);
       alert(`Error: ${error.message || "No se pudo completar el registro"}`);
@@ -432,6 +455,35 @@ export default function Home() {
     setProfileImage(image);
     setShowCustomImageModal(false);
   };
+
+  const handleLogout = () => {
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("user");
+    setIsAuthenticated(false);
+    setUserProfile(null);
+    setUsername("");
+    setProfileImage("");
+    setCurrentStep(1);
+
+    // Disparar evento personalizado para que AppLayout se entere del cambio
+    window.dispatchEvent(new Event("authChange"));
+  };
+
+  // Si el usuario está autenticado, mostrar el Timeline
+  if (isAuthenticated && userProfile) {
+    return (
+      <>
+        <Timeline />
+        {/* Botón de logout temporal para testing */}
+        <button
+          onClick={handleLogout}
+          className="fixed top-4 right-4 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg text-sm transition-colors z-50"
+        >
+          Cerrar sesión
+        </button>
+      </>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">

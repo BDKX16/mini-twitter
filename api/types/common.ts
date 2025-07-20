@@ -61,7 +61,6 @@ export type ObjectId = string;
 export interface AuthenticatedUser {
   id: ObjectId;
   username: string;
-  email: string;
   role?: string;
 }
 

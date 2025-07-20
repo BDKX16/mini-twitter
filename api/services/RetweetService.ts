@@ -168,7 +168,7 @@ export class RetweetService implements IBaseService {
         userId: retweet.user._id,
         firstName: retweet.user.firstName,
         lastName: retweet.user.lastName,
-        email: retweet.user.email,
+        username: retweet.user.username,
         profileImage: retweet.user.profileImage,
         comment: retweet.comment,
         retweetedAt: retweet.createdAt,

@@ -18,14 +18,6 @@ const userSchema = new Schema<IUserDocument>(
       trim: true,
       maxlength: [100, "Name cannot exceed 100 characters"],
     },
-    email: {
-      type: String,
-      required: [true, "Email is required"],
-      unique: true,
-      lowercase: true,
-      trim: true,
-      match: [/^\S+@\S+\.\S+$/, "Please provide a valid email"],
-    },
     password: {
       type: String,
       required: [true, "Password is required"],
@@ -115,7 +107,7 @@ userSchema.plugin(uniqueValidator, {
 });
 
 // Add indexes for better performance
-userSchema.index({ email: 1 });
+userSchema.index({ username: 1 });
 userSchema.index({ confirmed: 1 });
 userSchema.index({ createdAt: -1 });
 
@@ -123,7 +115,6 @@ userSchema.index({ createdAt: -1 });
 userSchema.methods.getPublicProfile = function (): Partial<IUser> {
   return {
     username: this.username,
-    email: this.email,
     confirmed: this.confirmed,
     createdAt: this.createdAt,
     firstName: this.firstName,
@@ -143,8 +134,8 @@ userSchema.methods.isAccountConfirmed = function (): boolean {
 };
 
 // Static methods
-userSchema.statics.findByEmail = function (email: string) {
-  return this.findOne({ email: email.toLowerCase() });
+userSchema.statics.findByUsername = function (username: string) {
+  return this.findOne({ username: username });
 };
 
 userSchema.statics.findConfirmedUsers = function () {
@@ -159,11 +150,6 @@ userSchema.statics.findRecentUsers = function (days: number = 30) {
 
 // Pre-save middleware
 userSchema.pre("save", function (next) {
-  // Ensure email is lowercase
-  if (this.isModified("email")) {
-    this.email = this.email.toLowerCase();
-  }
-
   // Set default username if not provided
   if (!this.username && this.firstName && this.lastName) {
     this.username = `${this.firstName} ${this.lastName}`;
@@ -174,16 +160,12 @@ userSchema.pre("save", function (next) {
 
 // Pre-update middleware
 userSchema.pre(["updateOne", "findOneAndUpdate"], function (next) {
-  const update = this.getUpdate() as any;
-  if (update.email) {
-    update.email = update.email.toLowerCase();
-  }
   next();
 });
 
 // Define the User model interface with static methods
 interface IUserModel extends Model<IUserDocument> {
-  findByEmail(email: string): Promise<IUserDocument | null>;
+  findByUsername(username: string): Promise<IUserDocument | null>;
   findConfirmedUsers(): Promise<IUserDocument[]>;
   findRecentUsers(days?: number): Promise<IUserDocument[]>;
 }

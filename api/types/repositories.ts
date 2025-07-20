@@ -72,11 +72,9 @@ export interface IBaseRepository<T extends Document> {
 // User repository interface
 export interface IUserRepository<T extends Document>
   extends IBaseRepository<T> {
-  findByEmail(email: string): Promise<T | null>;
   findByUsername(username: string): Promise<T | null>;
   findConfirmedUsers(options?: BaseQueryOptions): Promise<T[]>;
   findRecentUsers(days: number, options?: BaseQueryOptions): Promise<T[]>;
-  checkEmailAvailability(email: string): Promise<boolean>;
   checkUsernameAvailability(username: string): Promise<boolean>;
   getUserStats(userId: MongooseObjectId): Promise<any>;
   searchUsers(searchTerm: string, options?: BaseQueryOptions): Promise<T[]>;

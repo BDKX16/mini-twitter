@@ -33,7 +33,6 @@ export class UserController {
       const {
         firstName,
         lastName,
-        email,
         username,
         password,
         bio,
@@ -43,15 +42,14 @@ export class UserController {
       } = req.body;
 
       // Basic validation
-      if (!firstName || !email) {
-        throw new ValidationError("First name and email are required");
+      if (!firstName || !username) {
+        throw new ValidationError("First name and username are required");
       }
 
       const userData: CreateUserData = {
         firstName,
         lastName,
         username,
-        email,
         password,
         bio,
         profileImage,
@@ -64,9 +62,9 @@ export class UserController {
       // Generar token JWT automáticamente al registrarse
       const token = generateToken({
         id: user._id?.toString() || "",
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
+        username: user.username,
+        firstName: user.firstName || "",
+        lastName: user.lastName || "",
       });
 
       res.status(201).json({
@@ -77,7 +75,7 @@ export class UserController {
             id: user._id?.toString() || "",
             firstName: user.firstName,
             lastName: user.lastName,
-            email: user.email,
+            username: user.username,
             createdAt: user.createdAt,
           },
           token: token,
@@ -133,7 +131,6 @@ export class UserController {
       const updateData: UpdateUserData = {
         firstName: req.body.firstName,
         lastName: req.body.lastName,
-        email: req.body.email,
         bio: req.body.bio,
         profileImage: req.body.profileImage,
         website: req.body.website,
@@ -274,13 +271,13 @@ export class UserController {
    */
   async login(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const { email, password } = req.body;
+      const { username, password } = req.body;
 
-      if (!email || !password) {
-        throw new ValidationError("Email and password are required");
+      if (!username || !password) {
+        throw new ValidationError("Username and password are required");
       }
 
-      const result = await this.userService.loginUser(email, password);
+      const result = await this.userService.loginUser(username, password);
 
       // Debug: verificar qué contiene result.user
       console.log("Login result.user:", result.user);
@@ -297,9 +294,9 @@ export class UserController {
 
       const token = generateToken({
         id: userId,
-        email: result.user.email,
-        firstName: result.user.firstName,
-        lastName: result.user.lastName,
+        username: result.user.username,
+        firstName: result.user.firstName || "",
+        lastName: result.user.lastName || "",
       });
 
       res.json({
@@ -308,7 +305,7 @@ export class UserController {
         data: {
           user: {
             id: userId,
-            email: result.user.email,
+            username: result.user.username,
             firstName: result.user.firstName,
             lastName: result.user.lastName,
           },
@@ -330,13 +327,13 @@ export class UserController {
     next: NextFunction
   ): Promise<void> {
     try {
-      const { email } = req.body;
+      const { username } = req.body;
 
-      if (!email) {
-        throw new ValidationError("Email is required");
+      if (!username) {
+        throw new ValidationError("Username is required");
       }
 
-      const result = await this.userService.reactivateAccount(email);
+      const result = await this.userService.reactivateAccount(username);
 
       res.json({
         success: true,
@@ -487,33 +484,6 @@ export class UserController {
       next(error);
     }
   }
-
-  /**
-   * Check email availability
-   */
-  async checkEmailAvailability(
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ): Promise<void> {
-    try {
-      const { email } = req.params;
-
-      if (!email) {
-        throw new ValidationError("Email is required");
-      }
-
-      const isAvailable = await this.userService.checkEmailAvailability(email);
-
-      res.json({
-        success: true,
-        data: { available: isAvailable },
-      });
-    } catch (error) {
-      next(error);
-    }
-  }
 }
 
-// También exportar para compatibilidad con CommonJS
 module.exports = { UserController };

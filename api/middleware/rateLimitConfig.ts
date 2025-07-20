@@ -159,14 +159,6 @@ export const rateLimiters = {
       10 * 60 * 1000,
       3
     ),
-
-    // Email verification (1 por 10 minutos - más restrictivo)
-    emailVerification: createLazyRateLimiter(
-      "createEndpointRateLimiter",
-      "email_verification",
-      10 * 60 * 1000,
-      1
-    ),
   },
 };
 
@@ -294,7 +286,6 @@ export const endpointConfigs = {
     login: rateLimiters.auth,
     register: rateLimiters.endpoints.register,
     resetPassword: rateLimiters.endpoints.passwordReset,
-    verifyEmail: rateLimiters.endpoints.emailVerification,
   },
 
   // User endpoints

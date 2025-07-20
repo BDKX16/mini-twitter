@@ -18,7 +18,6 @@ db.createUser({
 
 // Crear colección de usuarios con índices optimizados
 db.users.createIndex({ username: 1 }, { unique: true });
-db.users.createIndex({ email: 1 }, { unique: true });
 db.users.createIndex({ createdAt: -1 });
 
 // Crear colección de tweets con índices para performance
@@ -49,7 +48,6 @@ print("📝 Inserting sample data...");
 // Usuario de prueba
 const sampleUser = {
   username: "testuser",
-  email: "test@twitter.com",
   displayName: "Test User",
   bio: "Usuario de prueba para Twitter clone",
   avatar: null,

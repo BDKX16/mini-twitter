@@ -5,7 +5,7 @@ import { AuthenticatedRequest } from "../types/controllers";
 // Interfaces para TypeScript
 interface UserData {
   id: string;
-  email: string;
+  username: string;
   firstName: string;
   lastName: string;
 }
@@ -72,7 +72,6 @@ const checkAuth = (
 
       req.user = {
         id: decoded.userData.id,
-        email: decoded.userData.email,
         username: `${decoded.userData.firstName} ${decoded.userData.lastName}`,
       };
 
@@ -129,7 +128,6 @@ const optionalAuth = (
       req.userData = decoded.userData;
       req.user = {
         id: decoded.userData.id,
-        email: decoded.userData.email,
         username: `${decoded.userData.firstName} ${decoded.userData.lastName}`,
       };
       next();

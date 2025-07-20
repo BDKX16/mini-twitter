@@ -18,17 +18,6 @@ export class UserRepository
   }
 
   /**
-   * Find user by email
-   */
-  async findByEmail(email: string): Promise<IUserDocument | null> {
-    try {
-      return await this.findOne({ email: email.toLowerCase() });
-    } catch (error: any) {
-      throw new AppError("Failed to find user by email", 500);
-    }
-  }
-
-  /**
    * Find user by username
    */
   async findByUsername(username: string): Promise<IUserDocument | null> {
@@ -78,18 +67,6 @@ export class UserRepository
   }
 
   /**
-   * Check email availability
-   */
-  async checkEmailAvailability(email: string): Promise<boolean> {
-    try {
-      const filter = { email: email.toLowerCase() };
-      return !(await this.exists(filter));
-    } catch (error: any) {
-      throw new AppError("Failed to check email availability", 500);
-    }
-  }
-
-  /**
    * Check username availability
    */
   async checkUsernameAvailability(username: string): Promise<boolean> {
@@ -116,7 +93,7 @@ export class UserRepository
         // Could include follower count, tweet count, etc.
         return {
           userId,
-          email: user.email,
+          username: user.username,
           confirmed: user.confirmed,
           createdAt: user.createdAt,
         };
@@ -176,16 +153,11 @@ export class UserRepository
     try {
       const regex = new RegExp(searchTerm, "i");
       const filter = {
-        $or: [
-          { username: regex },
-          { firstName: regex },
-          { lastName: regex },
-          { email: regex },
-        ],
+        $or: [{ username: regex }, { firstName: regex }, { lastName: regex }],
       };
 
       return await this.find(filter, {
-        select: "username firstName lastName email bio profileImage",
+        select: "username firstName lastName bio profileImage",
         limit: 20,
         ...options,
       });
@@ -227,13 +199,13 @@ export class UserRepository
    * Set password reset token
    */
   async setPasswordResetToken(
-    email: string,
+    username: string,
     token: string,
     expiresAt: Date
   ): Promise<IUserDocument | null> {
     try {
       return await this.updateOne(
-        { email: email.toLowerCase() },
+        { username: username },
         {
           resetPasswordToken: token,
           resetPasswordExpires: expiresAt,
@@ -346,7 +318,7 @@ export class UserRepository
       };
 
       return await this.find(filter, {
-        select: "firstName lastName email profileImage",
+        select: "firstName lastName username profileImage",
         limit,
       });
     } catch (error: any) {
@@ -375,25 +347,6 @@ export class UserRepository
       };
     } catch (error: any) {
       throw new AppError("Failed to cleanup unconfirmed users", 500);
-    }
-  }
-
-  /**
-   * Check if email is unique (excluding a specific user)
-   */
-  async isEmailUnique(
-    email: string,
-    excludeUserId?: MongooseObjectId
-  ): Promise<boolean> {
-    try {
-      const filter: any = { email: email.toLowerCase() };
-      if (excludeUserId) {
-        filter._id = { $ne: excludeUserId };
-      }
-
-      return !(await this.exists(filter));
-    } catch (error: any) {
-      throw new AppError("Failed to check email uniqueness", 500);
     }
   }
 

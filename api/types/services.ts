@@ -29,7 +29,6 @@ export interface CreateUserData {
   username: string;
   firstName: string;
   lastName?: string;
-  email: string;
   password?: string;
   bio?: string;
   profileImage?: string;
@@ -40,7 +39,6 @@ export interface CreateUserData {
 export interface UpdateUserData {
   firstName?: string;
   lastName?: string;
-  email?: string;
   bio?: string;
   profileImage?: string;
   website?: string;

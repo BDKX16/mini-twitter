@@ -32,12 +32,12 @@ export class UserService implements IBaseService {
       // Validate required data
       this.validateUserData(userData);
 
-      // Check if email already exists
-      const existingUser = await this.userRepository.findByEmail(
-        userData.email
+      // Check if username already exists
+      const existingUser = await this.userRepository.findByUsername(
+        userData.username
       );
       if (existingUser) {
-        throw new ConflictError("Email already exists");
+        throw new ConflictError("Username already exists");
       }
 
       // Create user
@@ -50,7 +50,7 @@ export class UserService implements IBaseService {
       return this.sanitizeUser(user);
     } catch (error: any) {
       if (error.code === 11000) {
-        throw new ConflictError("Email already exists");
+        throw new ConflictError("Username already exists");
       }
       throw error;
     }
@@ -68,17 +68,6 @@ export class UserService implements IBaseService {
   }
 
   /**
-   * Get user by email
-   */
-  async getUserByEmail(email: string): Promise<SanitizedUser> {
-    const user = await this.userRepository.findByEmail(email);
-    if (!user) {
-      throw new NotFoundError("User not found");
-    }
-    return this.sanitizeUser(user);
-  }
-
-  /**
    * Update user data
    */
   async updateUser(
@@ -89,16 +78,6 @@ export class UserService implements IBaseService {
     const existingUser = await this.userRepository.findById(userId);
     if (!existingUser) {
       throw new NotFoundError("User not found");
-    }
-
-    // If updating email, check that it doesn't exist
-    if (updateData.email && updateData.email !== existingUser.email) {
-      const emailExists = await this.userRepository.findByEmail(
-        updateData.email
-      );
-      if (emailExists) {
-        throw new ConflictError("Email already exists");
-      }
     }
 
     const updatedUser = await this.userRepository.updateById(
@@ -240,18 +219,6 @@ export class UserService implements IBaseService {
   }
 
   /**
-   * Check email availability
-   */
-  async checkEmailAvailability(email: string): Promise<boolean> {
-    try {
-      const user = await this.userRepository.findByEmail(email);
-      return !user;
-    } catch (error) {
-      return false;
-    }
-  }
-
-  /**
    * Check username availability
    */
   async checkUsernameAvailability(username: string): Promise<boolean> {
@@ -318,12 +285,12 @@ export class UserService implements IBaseService {
       }
     }
 
-    // Email validation
-    if ("email" in userData) {
-      if (!userData.email || userData.email.trim().length === 0) {
-        errors.push("Email is required");
-      } else if (!this.isValidEmail(userData.email)) {
-        errors.push("Invalid email format");
+    // Username validation
+    if ("username" in userData) {
+      if (!userData.username || userData.username.trim().length === 0) {
+        errors.push("Username is required");
+      } else if (userData.username.length < 3) {
+        errors.push("Username must be at least 3 characters long");
       }
     }
 
@@ -340,14 +307,6 @@ export class UserService implements IBaseService {
   }
 
   /**
-   * Validate email format
-   */
-  private isValidEmail(email: string): boolean {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  }
-
-  /**
    * Validate phone format
    */
   private isValidPhone(phone: string): boolean {
@@ -356,14 +315,14 @@ export class UserService implements IBaseService {
   }
 
   /**
-   * Login user with email and password
+   * Login user with username and password
    */
   async loginUser(
-    email: string,
+    username: string,
     password: string
   ): Promise<{ user: SanitizedUser; token: string }> {
     try {
-      const user = await this.userRepository.findByEmail(email);
+      const user = await this.userRepository.findByUsername(username);
       if (!user) {
         throw new NotFoundError("User not found");
       }
@@ -384,9 +343,9 @@ export class UserService implements IBaseService {
   /**
    * Reactivate a deactivated account
    */
-  async reactivateAccount(email: string): Promise<SanitizedUser> {
+  async reactivateAccount(username: string): Promise<SanitizedUser> {
     try {
-      const user = await this.userRepository.findByEmail(email);
+      const user = await this.userRepository.findByUsername(username);
       if (!user || !user._id) {
         throw new NotFoundError("User not found");
       }

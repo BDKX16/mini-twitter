@@ -125,12 +125,6 @@ router.get(
   userController.checkUsernameAvailability.bind(userController)
 );
 
-router.get(
-  "/users/check/email/:email",
-  applyProtection("public"),
-  userController.checkEmailAvailability.bind(userController)
-);
-
 // =============================================
 // RUTAS DE TWEETS
 // =============================================
