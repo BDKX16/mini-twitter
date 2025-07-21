@@ -70,11 +70,13 @@ const tweetSchema = new Schema<ITweetDocument>(
         trim: true,
       },
     ],
-    imageUrl: {
-      type: String,
-      required: false,
-      trim: true,
-    },
+    images: [
+      {
+        type: String,
+        required: false,
+        trim: true,
+      },
+    ],
     parentTweetId: {
       type: Schema.Types.ObjectId,
       ref: "Tweet",

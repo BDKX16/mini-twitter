@@ -58,10 +58,11 @@ export class UserController {
       };
 
       const user = await this.userService.createUser(userData);
-
+      const userId = (user as any).id?.toString() || "";
+      console.log("User created:", user);
       // Generar token JWT automáticamente al registrarse
       const token = generateToken({
-        id: user._id?.toString() || "",
+        id: userId,
         username: user.username,
         firstName: user.firstName || "",
         lastName: user.lastName || "",
@@ -72,11 +73,10 @@ export class UserController {
         message: "User registered successfully",
         data: {
           user: {
-            id: user._id?.toString() || "",
+            id: userId,
             firstName: user.firstName,
-            lastName: user.lastName,
             username: user.username,
-            createdAt: user.createdAt,
+            avatar: user.profileImage || "",
           },
           token: token,
           expiresIn: "7d",
@@ -304,6 +304,7 @@ export class UserController {
             username: result.user.username,
             firstName: result.user.firstName,
             lastName: result.user.lastName,
+            avatar: result.user.profileImage || null,
           },
           token: token,
           expiresIn: "7d",

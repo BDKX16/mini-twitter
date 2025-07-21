@@ -80,6 +80,66 @@ export class FileUploadController {
   }
 
   /**
+   * Subir imagen genérica (para posts, tweets, etc.)
+   */
+  async uploadImage(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const { image, filename } = req.body;
+
+      if (!image) {
+        throw new ValidationError("No image data provided");
+      }
+
+      // Procesar imagen base64
+      if (!image.startsWith("data:image/")) {
+        throw new ValidationError(
+          "Invalid image format. Only base64 images are supported."
+        );
+      }
+
+      // Extraer el buffer de la imagen base64
+      const matches = image.match(/^data:image\/([a-zA-Z]+);base64,(.+)$/);
+      if (!matches) {
+        throw new ValidationError("Invalid base64 image format");
+      }
+
+      const imageType = matches[1]; // jpg, png, etc.
+      const base64Data = matches[2];
+      const buffer = Buffer.from(base64Data, "base64");
+
+      // Validar tamaño (10MB máximo)
+      const maxSize = 10 * 1024 * 1024;
+      if (buffer.length > maxSize) {
+        throw new ValidationError("File size too large. Maximum 10MB allowed.");
+      }
+
+      // Generar nombre de archivo si no se proporciona
+      const originalName = filename || `post-image-${Date.now()}.${imageType}`;
+
+      // Subir archivo usando el servicio de almacenamiento
+      const result = await this.fileStorageService.uploadImage(
+        buffer,
+        originalName
+      );
+
+      res.status(200).json({
+        success: true,
+        message: "Image uploaded successfully",
+        data: {
+          url: result.url,
+          filename: result.filename,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * Eliminar imagen (para limpieza de archivos no utilizados)
    */
   async deleteImage(

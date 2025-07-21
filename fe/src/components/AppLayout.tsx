@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Sidebar } from "@/components/Sidebar";
+import { RightSidebar } from "@/components/RightSidebar";
 import { authService } from "@/services";
 
 interface AppLayoutProps {
@@ -62,28 +63,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       <div className="max-w-6xl mx-auto flex">
         <Sidebar />
         <main className="flex-1 border-x border-gray-200">{children}</main>
-        <div className="w-80 p-4 hidden lg:block">
-          <div className="bg-gray-50 rounded-2xl p-4">
-            <h3 className="text-xl font-bold mb-3">Tendencias para ti</h3>
-            <div className="space-y-3">
-              <div className="hover:bg-gray-100 p-2 rounded cursor-pointer">
-                <p className="text-sm text-gray-500">Tendencia en España</p>
-                <p className="font-semibold">#NextJS</p>
-                <p className="text-sm text-gray-500">125K Tweets</p>
-              </div>
-              <div className="hover:bg-gray-100 p-2 rounded cursor-pointer">
-                <p className="text-sm text-gray-500">Tendencia en Tecnología</p>
-                <p className="font-semibold">#React</p>
-                <p className="text-sm text-gray-500">89K Tweets</p>
-              </div>
-              <div className="hover:bg-gray-100 p-2 rounded cursor-pointer">
-                <p className="text-sm text-gray-500">Tendencia</p>
-                <p className="font-semibold">#OpenAI</p>
-                <p className="text-sm text-gray-500">234K Tweets</p>
-              </div>
-            </div>
-          </div>
-        </div>
+        <RightSidebar />
       </div>
     </div>
   );

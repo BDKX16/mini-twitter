@@ -21,6 +21,30 @@ export class TweetController {
   }
 
   /**
+   * Format tweet response with user data
+   */
+  private formatTweetResponse(tweet: any) {
+    const author = tweet.author;
+    return {
+      id: tweet._id,
+      content: tweet.content,
+      images: tweet.images || [],
+      createdAt: tweet.createdAt,
+      user: {
+        id: author._id || author.id,
+        username: author.username,
+        name:
+          `${author.firstName || ""} ${author.lastName || ""}`.trim() ||
+          author.username,
+        avatar: author.profileImage || null,
+      },
+      likes: tweet.likes?.length || 0,
+      retweets: tweet.retweets?.length || 0,
+      replies: 0, // This would need to be calculated separately
+    };
+  }
+
+  /**
    * Create a new tweet
    */
   async createTweet(
@@ -49,11 +73,15 @@ export class TweetController {
       };
 
       const tweet = await this.tweetService.createTweet(tweetData);
+      console.log("Tweet created successfully:", tweet);
+
+      // Format the response with complete user data
+      const formattedTweet = this.formatTweetResponse(tweet);
 
       res.status(201).json({
         success: true,
         message: "Tweet created successfully",
-        data: { tweet },
+        data: { tweet: formattedTweet },
       });
     } catch (error) {
       next(error);
@@ -531,6 +559,56 @@ export class TweetController {
       res.json({
         success: true,
         data: { timeline },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Get trending topics
+   */
+  async getTrendingTopics(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const { hours = 24, limit = 10 } = req.query;
+
+      const trends = await this.tweetService.getTrendingTopics({
+        hours: Number(hours),
+        limit: Number(limit),
+      });
+
+      res.json({
+        success: true,
+        data: { trends },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Get trending hashtags
+   */
+  async getTrendingHashtags(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const { hours = 24, limit = 10 } = req.query;
+
+      const hashtags = await this.tweetService.getTrendingHashtags({
+        hours: Number(hours),
+        limit: Number(limit),
+      });
+
+      res.json({
+        success: true,
+        data: { hashtags },
       });
     } catch (error) {
       next(error);

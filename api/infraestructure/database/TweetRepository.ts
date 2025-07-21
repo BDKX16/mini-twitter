@@ -303,7 +303,7 @@ export class TweetRepository
   }
 
   /**
-   * Get home timeline (tweets from followed users)
+   * Get home timeline (tweets from followed users + famous users)
    */
   async getHomeTimeline(
     userId: MongooseObjectId,
@@ -316,10 +316,38 @@ export class TweetRepository
       );
       const followingIds = followedUsers.map((follow: any) => follow.following);
 
-      // Include the user's own tweets as well
-      const authorIds = [...followingIds, userId];
+      // Get famous users (users with most followers)
+      const famousUsersAgg = await Follow.aggregate([
+        {
+          $group: {
+            _id: "$following",
+            followerCount: { $sum: 1 },
+          },
+        },
+        {
+          $match: {
+            followerCount: { $gte: 10 }, // Users with 10+ followers
+          },
+        },
+        {
+          $sort: { followerCount: -1 },
+        },
+        {
+          $limit: 20, // Top 20 most followed users
+        },
+        {
+          $project: {
+            _id: 1,
+          },
+        },
+      ]);
 
-      // Now get tweets from these users
+      const famousUserIds = famousUsersAgg.map((user: any) => user._id);
+
+      // Combine followed users, famous users, and user's own tweets
+      const authorIds = [...new Set([...followingIds, ...famousUserIds, userId])];
+
+      // Now get tweets from these users with weighted distribution
       const pipeline = [
         {
           $match: {
@@ -338,7 +366,28 @@ export class TweetRepository
           $unwind: "$author",
         },
         {
-          $sort: { createdAt: -1 },
+          $addFields: {
+            // Add priority scoring for better content mixing
+            priority: {
+              $cond: [
+                { $eq: ["$author._id", userId] }, // User's own tweets
+                3,
+                {
+                  $cond: [
+                    { $in: ["$author._id", followingIds] }, // Followed users
+                    2,
+                    1, // Famous users
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        {
+          $sort: { 
+            priority: -1, // Higher priority first
+            createdAt: -1, // Then by recency
+          },
         },
       ];
 
@@ -349,6 +398,13 @@ export class TweetRepository
       if (options.limit) {
         pipeline.push({ $limit: options.limit } as any);
       }
+
+      // Remove the priority field from final result
+      pipeline.push({
+        $project: {
+          priority: 0,
+        },
+      } as any);
 
       return await this.aggregate(pipeline);
     } catch (error: any) {

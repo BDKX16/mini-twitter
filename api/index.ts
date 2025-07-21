@@ -68,9 +68,9 @@ class TwitterAPI {
       })
     );
 
-    // JSON parsing con límites
-    this.app.use(express.json({ limit: "1mb" }));
-    this.app.use(express.urlencoded({ extended: true, limit: "1mb" }));
+    // JSON parsing con límites aumentados para imágenes
+    this.app.use(express.json({ limit: "10mb" }));
+    this.app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
     // CORS configurado
     this.app.use(

@@ -56,7 +56,15 @@ router.post(
 router.post(
   "/upload/profile-image",
   applyProtection("authenticated"),
+  checkAuth,
   fileUploadController.uploadProfileImage.bind(fileUploadController)
+);
+
+router.post(
+  "/upload/image",
+  applyProtection("contentCreation"),
+  checkAuth,
+  fileUploadController.uploadImage.bind(fileUploadController)
 );
 
 // =============================================
@@ -146,6 +154,18 @@ router.get(
   "/tweets/trending",
   applyProtection("public"),
   tweetController.getTrendingTweets.bind(tweetController)
+);
+
+router.get(
+  "/trends/topics",
+  applyProtection("public"),
+  tweetController.getTrendingTopics.bind(tweetController)
+);
+
+router.get(
+  "/trends/hashtags",
+  applyProtection("public"),
+  tweetController.getTrendingHashtags.bind(tweetController)
 );
 
 router.get(

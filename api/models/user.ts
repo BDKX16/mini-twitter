@@ -24,6 +24,13 @@ const userSchema = new Schema<IUserDocument>(
       required: false,
       default: "",
     },
+    bio: {
+      type: String,
+      required: false,
+      default: "",
+      maxlength: [160, "Bio cannot exceed 160 characters"],
+      trim: true,
+    },
     confirmed: {
       type: Boolean,
       required: [true, "Confirmation status is required"],
@@ -57,6 +64,11 @@ const userSchema = new Schema<IUserDocument>(
       required: false,
       trim: true,
       match: [/^[\+]?[1-9][\d]{0,15}$/, "Please provide a valid phone number"],
+    },
+    profileImage: {
+      type: String,
+      required: false,
+      trim: true,
     },
     address: {
       type: String,

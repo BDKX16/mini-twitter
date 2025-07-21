@@ -12,12 +12,14 @@ export interface IUser {
   username: string;
   password: string;
   confirmed: boolean;
+  bio: string;
   nullDate?: Date | null;
   createdAt: Date;
   firstName?: string;
   lastName?: string;
   phone?: string;
   address?: string;
+  profileImage?: string;
   resetPasswordToken?: string;
   resetPasswordExpires?: Date;
 }
@@ -43,7 +45,7 @@ export interface ITweet {
   retweets: ITweetRetweet[];
   mentions: MongooseObjectId[];
   hashtags: string[];
-  imageUrl?: string;
+  images?: string[];
   parentTweetId?: MongooseObjectId;
   threadId?: MongooseObjectId;
   isDeleted: boolean;
@@ -207,6 +209,7 @@ export interface ITweetResponse {
   author: IUserResponse;
   content: string;
   createdAt: Date;
+  images: string[];
   likesCount: number;
   retweetsCount: number;
   isLiked: boolean;

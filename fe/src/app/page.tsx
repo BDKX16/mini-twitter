@@ -314,7 +314,7 @@ export default function Home() {
    */
   const uploadImage = async (imageData: string): Promise<string> => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/upload/profile-image`, {
+      const response = await fetch(`${API_BASE_URL}/upload/profile-image`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

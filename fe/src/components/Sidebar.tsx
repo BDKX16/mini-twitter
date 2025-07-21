@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState, useEffect } from "react";
 import {
   Home,
   User,
@@ -30,6 +31,20 @@ const navigation = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [userData, setUserData] = useState<any>(null);
+
+  // Cargar datos del usuario desde localStorage
+  useEffect(() => {
+    const userDataString = localStorage.getItem("userData");
+    if (userDataString) {
+      try {
+        const user = JSON.parse(userDataString);
+        setUserData(user);
+      } catch (error) {
+        console.error("Error parsing user data from localStorage:", error);
+      }
+    }
+  }, []);
 
   const handleLogout = () => {
     authService.logout();
@@ -70,10 +85,22 @@ export function Sidebar() {
 
       <div className="mt-auto pt-8">
         <div className="flex items-center space-x-3 p-3 rounded-full hover:bg-gray-100 cursor-pointer">
-          <div className="w-10 h-10 bg-gray-300 rounded-full"></div>
+          {userData?.avatar || userData?.profileImage ? (
+            <img
+              src={userData.avatar || userData.profileImage}
+              alt="Your avatar"
+              className="w-10 h-10 rounded-full object-cover"
+            />
+          ) : (
+            <div className="w-10 h-10 bg-gray-300 rounded-full"></div>
+          )}
           <div className="hidden lg:block">
-            <p className="font-semibold">Tu Usuario</p>
-            <p className="text-gray-500">@tuusuario</p>
+            <p className="font-semibold">
+              {userData?.name || userData?.username || "Tu Usuario"}
+            </p>
+            <p className="text-gray-500">
+              @{userData?.username || "tuusuario"}
+            </p>
           </div>
         </div>
 

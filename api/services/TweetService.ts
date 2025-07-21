@@ -32,7 +32,7 @@ export class TweetService implements IBaseService {
   /**
    * Create a new tweet
    */
-  async createTweet(createData: CreateTweetData): Promise<ITweetDocument> {
+  async createTweet(createData: CreateTweetData): Promise<any> {
     try {
       // Validate that user exists
       const user = await this.userRepository.findById(createData.authorId);
@@ -58,9 +58,9 @@ export class TweetService implements IBaseService {
         createdAt: new Date(),
       } as Partial<ITweetDocument>);
 
-      // Return populated tweet
-      const populatedTweet = await this.tweetRepository.findById(tweet._id!);
-      return populatedTweet!;
+      // Convert to plain object and include author
+      const tweetObj = tweet.toObject();
+      return { ...tweetObj, author: user.toObject() };
     } catch (error: any) {
       throw error;
     }
@@ -449,6 +449,139 @@ export class TweetService implements IBaseService {
   private extractMentions(content: string): string[] {
     const mentions = content.match(/@\w+/g) || [];
     return mentions.map((mention) => mention.replace("@", ""));
+  }
+
+  /**
+   * Get trending topics based on tweet engagement
+   */
+  async getTrendingTopics(options: {
+    hours?: number;
+    limit?: number;
+  }): Promise<any[]> {
+    try {
+      const { hours = 24, limit = 10 } = options;
+      const cutoffDate = new Date();
+      cutoffDate.setHours(cutoffDate.getHours() - hours);
+
+      const trends = await this.tweetRepository.aggregate([
+        {
+          $match: {
+            createdAt: { $gte: cutoffDate },
+            isDeleted: false,
+          },
+        },
+        {
+          $addFields: {
+            likesCount: { $size: "$likes" },
+            retweetsCount: { $size: "$retweets" },
+            totalEngagement: {
+              $add: [{ $size: "$likes" }, { $size: "$retweets" }],
+            },
+          },
+        },
+        {
+          $sort: { totalEngagement: -1 },
+        },
+        {
+          $limit: limit,
+        },
+        {
+          $lookup: {
+            from: "users",
+            localField: "author",
+            foreignField: "_id",
+            as: "authorData",
+          },
+        },
+        {
+          $unwind: "$authorData",
+        },
+        {
+          $project: {
+            content: 1,
+            totalEngagement: 1,
+            likesCount: 1,
+            retweetsCount: 1,
+            createdAt: 1,
+            author: {
+              username: "$authorData.username",
+              name: {
+                $concat: [
+                  { $ifNull: ["$authorData.firstName", ""] },
+                  " ",
+                  { $ifNull: ["$authorData.lastName", ""] },
+                ],
+              },
+              profileImage: "$authorData.profileImage",
+            },
+          },
+        },
+      ]);
+
+      return trends;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Get trending hashtags
+   */
+  async getTrendingHashtags(options: {
+    hours?: number;
+    limit?: number;
+  }): Promise<any[]> {
+    try {
+      const { hours = 24, limit = 10 } = options;
+      const cutoffDate = new Date();
+      cutoffDate.setHours(cutoffDate.getHours() - hours);
+
+      const hashtags = await this.tweetRepository.aggregate([
+        {
+          $match: {
+            createdAt: { $gte: cutoffDate },
+            isDeleted: false,
+            hashtags: { $exists: true, $ne: [] },
+          },
+        },
+        {
+          $unwind: "$hashtags",
+        },
+        {
+          $group: {
+            _id: "$hashtags",
+            count: { $sum: 1 },
+            totalLikes: { $sum: { $size: "$likes" } },
+            totalRetweets: { $sum: { $size: "$retweets" } },
+          },
+        },
+        {
+          $addFields: {
+            totalEngagement: { $add: ["$totalLikes", "$totalRetweets"] },
+            hashtag: { $concat: ["#", "$_id"] },
+          },
+        },
+        {
+          $sort: { count: -1, totalEngagement: -1 },
+        },
+        {
+          $limit: limit,
+        },
+        {
+          $project: {
+            _id: 0,
+            hashtag: 1,
+            count: 1,
+            totalEngagement: 1,
+            category: "Trending",
+          },
+        },
+      ]);
+
+      return hashtags;
+    } catch (error) {
+      throw error;
+    }
   }
 
   /**
