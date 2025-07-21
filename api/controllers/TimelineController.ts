@@ -20,7 +20,7 @@ export class TimelineController {
   }
 
   /**
-   * Get home timeline (tweets from followed users)
+   * Get home timeline (tweets from followed users + famous users)
    */
   async getHomeTimeline(
     req: AuthenticatedRequest,
@@ -37,6 +37,7 @@ export class TimelineController {
 
       const result = await this.timelineService.getHomeTimeline(
         toObjectId(userId),
+        toObjectId(userId), // Pass current user for interaction status
         {
           limit: Number(limit),
           skip: Number(skip),
@@ -46,6 +47,40 @@ export class TimelineController {
       res.json({
         success: true,
         data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Get enhanced home timeline with content mix analytics
+   */
+  async getEnhancedHomeTimeline(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const userId = req.user?.id;
+      const { limit = 20, skip = 0 } = req.query;
+
+      if (!userId) {
+        throw new ValidationError("User must be authenticated");
+      }
+
+      const result = await this.timelineService.getEnhancedHomeTimeline(
+        toObjectId(userId),
+        {
+          limit: Number(limit),
+          skip: Number(skip),
+        }
+      );
+
+      res.json({
+        success: true,
+        data: result,
+        message: `Timeline loaded with ${result.tweets.length} tweets (${result.contentMix.ownTweets} own, ${result.contentMix.followedUsers} followed, ${result.contentMix.famousUsers} famous users)`,
       });
     } catch (error) {
       next(error);
@@ -63,7 +98,7 @@ export class TimelineController {
     try {
       const { userId } = req.params;
       const { limit = 20, skip = 0 } = req.query;
-
+      console.log("USANDO TIMELINE DEL SUUARIO");
       if (!isValidObjectId(userId)) {
         throw new ValidationError("Invalid user ID");
       }

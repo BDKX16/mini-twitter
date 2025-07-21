@@ -47,12 +47,16 @@ export class RetweetController {
         comment,
       };
 
-      const retweet = await this.retweetService.retweetTweet(retweetData);
+      const result = await this.retweetService.retweetTweet(retweetData);
 
       res.status(201).json({
         success: true,
-        message: "Tweet retweeted successfully",
-        data: { retweet },
+        message: result.message,
+        data: {
+          tweet: result.tweet,
+          retweetsCount: result.retweetsCount,
+          isRetweeted: result.isRetweeted,
+        },
       });
     } catch (error) {
       next(error);
@@ -79,14 +83,19 @@ export class RetweetController {
         throw new ValidationError("Invalid tweet ID");
       }
 
-      await this.retweetService.unretweetTweet(
+      const result = await this.retweetService.unretweetTweet(
         toObjectId(userId),
         toObjectId(tweetId)
       );
 
       res.json({
         success: true,
-        message: "Tweet unretweeted successfully",
+        message: result.message,
+        data: {
+          tweet: result.tweet,
+          retweetsCount: result.retweetsCount,
+          isRetweeted: result.isRetweeted,
+        },
       });
     } catch (error) {
       next(error);

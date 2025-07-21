@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import {
   Home,
@@ -20,17 +20,18 @@ import { authService } from "@/services";
 
 const navigation = [
   { name: "Inicio", href: "/", icon: Home },
-  { name: "Explorar", href: "/explore", icon: Search },
-  { name: "Notificaciones", href: "/notifications", icon: Bell },
-  { name: "Mensajes", href: "/messages", icon: Mail },
-  { name: "Guardados", href: "/bookmarks", icon: Bookmark },
-  { name: "Listas", href: "/lists", icon: Hash },
+  //{ name: "Explorar", href: "/explore", icon: Search },
+  //{ name: "Notificaciones", href: "/notifications", icon: Bell },
+  //{ name: "Mensajes", href: "/messages", icon: Mail },
+  //{ name: "Guardados", href: "/bookmarks", icon: Bookmark },
+  //{ name: "Listas", href: "/lists", icon: Hash },
   { name: "Perfil", href: "/profile", icon: User },
-  { name: "Más", href: "/more", icon: MoreHorizontal },
+  //{ name: "Más", href: "/more", icon: MoreHorizontal },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [userData, setUserData] = useState<any>(null);
 
   // Cargar datos del usuario desde localStorage
@@ -48,6 +49,14 @@ export function Sidebar() {
 
   const handleLogout = () => {
     authService.logout();
+  };
+
+  const handleUserClick = () => {
+    if (userData?.username) {
+      router.push(`/profile/${userData.username}`);
+    } else {
+      router.push("/profile");
+    }
   };
 
   return (
@@ -79,12 +88,26 @@ export function Sidebar() {
         })}
       </nav>
 
-      <Button className="w-full mt-8 bg-blue-500 hover:bg-blue-600 text-white rounded-full py-3 text-lg font-bold">
+      <Button
+        className="w-full mt-8 bg-blue-500 hover:bg-blue-600 text-white rounded-full py-3 text-lg font-bold"
+        onClick={() => {
+          router.push("/");
+          setTimeout(() => {
+            const tweetInput = document.getElementById("tweet-input");
+            if (tweetInput) {
+              tweetInput.focus();
+            }
+          }, 100);
+        }}
+      >
         Twittear
       </Button>
 
       <div className="mt-auto pt-8">
-        <div className="flex items-center space-x-3 p-3 rounded-full hover:bg-gray-100 cursor-pointer">
+        <div
+          className="flex items-center space-x-3 p-3 rounded-full hover:bg-gray-100 cursor-pointer transition-colors"
+          onClick={handleUserClick}
+        >
           {userData?.avatar || userData?.profileImage ? (
             <img
               src={userData.avatar || userData.profileImage}

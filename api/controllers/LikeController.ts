@@ -54,8 +54,12 @@ export class LikeController {
 
       res.status(201).json({
         success: true,
-        message: "Tweet liked successfully",
-        data: result,
+        message: result.message,
+        data: {
+          tweet: result.tweet,
+          likesCount: result.likesCount,
+          isLiked: result.isLiked,
+        },
       });
     } catch (error) {
       next(error);
@@ -99,6 +103,11 @@ export class LikeController {
       res.status(200).json({
         success: true,
         message: result.message,
+        data: {
+          tweet: result.tweet,
+          likesCount: result.likesCount,
+          isLiked: result.isLiked,
+        },
       });
     } catch (error) {
       next(error);

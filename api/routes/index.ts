@@ -81,7 +81,14 @@ router.get(
 router.get(
   "/users/:userId",
   applyProtection("public"),
-  userController.getProfile.bind(userController)
+  userController.getUserById.bind(userController)
+);
+
+router.get(
+  "/users/username/:username",
+  optionalAuth,
+  applyProtection("public"),
+  userController.getUserByUsername.bind(userController)
 );
 
 router.get(
@@ -302,6 +309,14 @@ router.post(
   followController.followUser.bind(followController)
 );
 
+// Unfollows - Protección para acciones sociales
+router.delete(
+  "/users/:userId/follow",
+  applyProtection("socialAction"),
+  checkAuth,
+  followController.unfollowUser.bind(followController)
+);
+
 router.post(
   "/users/follow/bulk",
   applyProtection("bulkOperation"),
@@ -315,6 +330,13 @@ router.get(
   applyProtection("authenticated"),
   checkAuth,
   timelineController.getHomeTimeline.bind(timelineController)
+);
+
+router.get(
+  "/timeline/enhanced",
+  applyProtection("authenticated"),
+  checkAuth,
+  timelineController.getEnhancedHomeTimeline.bind(timelineController)
 );
 
 router.get(

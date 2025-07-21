@@ -5,6 +5,8 @@
 
 import { TweetRepository } from "../infraestructure/database/TweetRepository";
 import { UserRepository } from "../infraestructure/database/UserRepository";
+import { LikeRepository } from "../infraestructure/database/LikeRepository";
+import { RetweetRepository } from "../infraestructure/database/RetweetRepository";
 import {
   CreateTweetData,
   UpdateTweetData,
@@ -23,10 +25,14 @@ import {
 export class TweetService implements IBaseService {
   private tweetRepository: TweetRepository;
   private userRepository: UserRepository;
+  private likeRepository: LikeRepository;
+  private retweetRepository: RetweetRepository;
 
   constructor() {
     this.tweetRepository = new TweetRepository();
     this.userRepository = new UserRepository();
+    this.likeRepository = new LikeRepository();
+    this.retweetRepository = new RetweetRepository();
   }
 
   /**
@@ -59,8 +65,11 @@ export class TweetService implements IBaseService {
       } as Partial<ITweetDocument>);
 
       // Convert to plain object and include author
-      const tweetObj = tweet.toObject();
-      return { ...tweetObj, author: user.toObject() };
+      const tweetObj =
+        typeof tweet.toObject === "function" ? tweet.toObject() : tweet;
+      const userObj =
+        typeof user.toObject === "function" ? user.toObject() : user;
+      return { ...tweetObj, author: userObj };
     } catch (error: any) {
       throw error;
     }
@@ -69,12 +78,17 @@ export class TweetService implements IBaseService {
   /**
    * Get tweet by ID
    */
-  async getTweetById(tweetId: MongooseObjectId): Promise<ITweetDocument> {
+  async getTweetById(
+    tweetId: MongooseObjectId,
+    currentUserId?: MongooseObjectId
+  ): Promise<any> {
     const tweet = await this.tweetRepository.findById(tweetId);
     if (!tweet) {
       throw new NotFoundError("Tweet not found");
     }
-    return tweet;
+
+    // Enrich with user interaction data
+    return await this.enrichTweetWithUserData(tweet, currentUserId);
   }
 
   /**
@@ -82,8 +96,9 @@ export class TweetService implements IBaseService {
    */
   async getTweetsByUser(
     userId: MongooseObjectId,
+    currentUserId?: MongooseObjectId,
     options: ServiceOptions = {}
-  ): Promise<ITweetDocument[]> {
+  ): Promise<any[]> {
     const { limit = 20, skip = 0 } = options;
 
     // Verify user exists
@@ -91,18 +106,28 @@ export class TweetService implements IBaseService {
     if (!user) {
       throw new NotFoundError("User not found");
     }
+    console.log(userId);
+    // Only get main tweets by user (not replies/comments)
+    const tweets = await this.tweetRepository.find(
+      { author: userId, parentTweetId: null },
+      {
+        limit,
+        skip,
+        sort: { createdAt: -1 },
+      }
+    );
 
-    const tweets = await this.tweetRepository.findByAuthor(userId, {
-      limit,
-      skip,
-    });
-    return tweets;
+    // Enrich with user interaction data
+    return await this.enrichTweetsWithUserData(tweets, currentUserId);
   }
 
   /**
    * Get all tweets with pagination
    */
-  async getAllTweets(options: ServiceOptions = {}): Promise<ITweetDocument[]> {
+  async getAllTweets(
+    currentUserId?: MongooseObjectId,
+    options: ServiceOptions = {}
+  ): Promise<any[]> {
     const {
       limit = 50,
       skip = 0,
@@ -110,8 +135,9 @@ export class TweetService implements IBaseService {
       sortOrder = "desc",
     } = options;
 
+    // Only get main tweets (not replies/comments)
     const tweets = await this.tweetRepository.find(
-      {},
+      { parentTweetId: { $exists: false } },
       {
         limit,
         skip,
@@ -119,7 +145,8 @@ export class TweetService implements IBaseService {
       }
     );
 
-    return tweets;
+    // Enrich with user interaction data
+    return await this.enrichTweetsWithUserData(tweets, currentUserId);
   }
 
   /**
@@ -209,10 +236,18 @@ export class TweetService implements IBaseService {
       throw new ValidationError("Search query is required");
     }
 
-    const tweets = await this.tweetRepository.searchByContent(query, {
-      limit,
-      skip,
-    });
+    // Search only main tweets (not replies/comments)
+    const tweets = await this.tweetRepository.find(
+      {
+        content: { $regex: query, $options: "i" },
+        parentTweetId: { $exists: false },
+      },
+      {
+        limit,
+        skip,
+        sort: { createdAt: -1 },
+      }
+    );
     return tweets;
   }
 
@@ -239,11 +274,22 @@ export class TweetService implements IBaseService {
    * Get trending tweets
    */
   async getTrendingTweets(
+    currentUserId?: MongooseObjectId,
     timeframe: number = 24,
     limit: number = 10
   ): Promise<any[]> {
-    const tweets = await this.tweetRepository.getTrending(timeframe, limit);
-    return tweets;
+    // Get trending tweets but exclude replies/comments
+    const tweets = await this.tweetRepository.find(
+      { parentTweetId: { $exists: false } },
+      {
+        limit,
+        skip: 0,
+        sort: { createdAt: -1 },
+      }
+    );
+
+    // Enrich with user interaction data
+    return await this.enrichTweetsWithUserData(tweets, currentUserId);
   }
 
   /**
@@ -251,8 +297,9 @@ export class TweetService implements IBaseService {
    */
   async getTimeline(
     userId: MongooseObjectId,
+    currentUserId?: MongooseObjectId,
     options: ServiceOptions = {}
-  ): Promise<ITweetDocument[]> {
+  ): Promise<any[]> {
     const { limit = 20, skip = 0 } = options;
 
     // Verify user exists
@@ -307,10 +354,18 @@ export class TweetService implements IBaseService {
     // Clean hashtag (remove # if exists)
     const cleanHashtag = hashtag.replace("#", "").toLowerCase();
 
-    const tweets = await this.tweetRepository.getHashtagTweets(cleanHashtag, {
-      limit,
-      skip,
-    });
+    // Get tweets by hashtag but exclude replies/comments
+    const tweets = await this.tweetRepository.find(
+      {
+        hashtags: cleanHashtag,
+        parentTweetId: { $exists: false },
+      },
+      {
+        limit,
+        skip,
+        sort: { createdAt: -1 },
+      }
+    );
     return tweets;
   }
 
@@ -319,8 +374,9 @@ export class TweetService implements IBaseService {
    */
   async getTweetReplies(
     tweetId: MongooseObjectId,
+    currentUserId?: MongooseObjectId,
     options: ServiceOptions = {}
-  ): Promise<ITweetDocument[]> {
+  ): Promise<any[]> {
     const { limit = 20, skip = 0 } = options;
 
     // Verify tweet exists
@@ -331,9 +387,11 @@ export class TweetService implements IBaseService {
 
     const replies = await this.tweetRepository.find(
       { parentTweetId: tweetId },
-      { limit, skip, sort: { createdAt: 1 } }
+      { limit, skip, sort: { createdAt: 1 }, populate: "author" }
     );
-    return replies;
+
+    // Enrich with user interaction data
+    return await this.enrichTweetsWithUserData(replies, currentUserId);
   }
 
   /**
@@ -540,12 +598,27 @@ export class TweetService implements IBaseService {
         {
           $match: {
             createdAt: { $gte: cutoffDate },
-            isDeleted: false,
             hashtags: { $exists: true, $ne: [] },
           },
         },
         {
           $unwind: "$hashtags",
+        },
+        {
+          $lookup: {
+            from: "likes",
+            localField: "_id",
+            foreignField: "tweet",
+            as: "likes",
+          },
+        },
+        {
+          $lookup: {
+            from: "retweets",
+            localField: "_id",
+            foreignField: "tweet",
+            as: "retweets",
+          },
         },
         {
           $group: {
@@ -582,6 +655,109 @@ export class TweetService implements IBaseService {
     } catch (error) {
       throw error;
     }
+  }
+
+  /**
+   * Enrich tweets with user interaction data (isLiked, isRetweeted)
+   */
+  async enrichTweetsWithUserData(
+    tweets: ITweetDocument[],
+    currentUserId?: MongooseObjectId
+  ): Promise<any[]> {
+    if (tweets.length === 0) {
+      return [];
+    }
+
+    try {
+      // Get tweet IDs
+      const tweetIds = tweets.map((tweet) => tweet._id);
+
+      // Get user's likes and retweets for these tweets in parallel (if user is authenticated)
+      // Also get replies count for all tweets
+      const promises: Promise<any>[] = [
+        // Get replies count for each tweet
+        this.tweetRepository.aggregate([
+          { $match: { parentTweetId: { $in: tweetIds } } },
+          { $group: { _id: "$parentTweetId", count: { $sum: 1 } } },
+        ]),
+      ];
+
+      if (currentUserId) {
+        promises.push(
+          this.likeRepository.find(
+            { user: currentUserId, tweet: { $in: tweetIds } },
+            { select: "tweet" }
+          ),
+          this.retweetRepository.find(
+            { user: currentUserId, tweet: { $in: tweetIds } },
+            { select: "tweet" }
+          )
+        );
+      }
+
+      const results = await Promise.all(promises);
+      const repliesCounts = results[0];
+      const userLikes = currentUserId ? results[1] : [];
+      const userRetweets = currentUserId ? results[2] : [];
+
+      // Create Maps for faster lookup
+      const repliesCountMap = new Map(
+        repliesCounts.map((item: any) => [item._id?.toString(), item.count])
+      );
+
+      const likedTweetIds = new Set(
+        userLikes.map((like: any) => like.tweet.toString())
+      );
+      const retweetedTweetIds = new Set(
+        userRetweets.map((retweet: any) => retweet.tweet.toString())
+      );
+
+      // Enrich tweets with user interaction data and replies count
+      return tweets.map((tweet) => {
+        const tweetObj =
+          typeof tweet.toObject === "function" ? tweet.toObject() : tweet;
+        const tweetId = tweet._id?.toString();
+
+        if (!tweetId) {
+          return {
+            ...tweetObj,
+            isLiked: false,
+            isRetweeted: false,
+            repliesCount: 0,
+          };
+        }
+
+        return {
+          ...tweetObj,
+          isLiked: currentUserId ? likedTweetIds.has(tweetId) : false,
+          isRetweeted: currentUserId ? retweetedTweetIds.has(tweetId) : false,
+          repliesCount: repliesCountMap.get(tweetId) || 0,
+        };
+      });
+    } catch (error: any) {
+      console.error("Error enriching tweets with user data:", error);
+      // Fallback: return tweets without interaction data
+      return tweets.map((tweet) => ({
+        ...(typeof tweet.toObject === "function" ? tweet.toObject() : tweet),
+        isLiked: false,
+        isRetweeted: false,
+        repliesCount: 0,
+      }));
+    }
+  }
+
+  /**
+   * Enrich single tweet with user interaction data
+   */
+  async enrichTweetWithUserData(
+    tweet: ITweetDocument,
+    currentUserId?: MongooseObjectId
+  ): Promise<any> {
+    const enrichedTweets = await this.enrichTweetsWithUserData(
+      [tweet],
+      currentUserId
+    );
+    return enrichedTweets[0];
   }
 
   /**

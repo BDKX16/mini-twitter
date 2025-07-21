@@ -13,11 +13,14 @@ interface Tweet {
     username: string;
     avatar: string;
   };
+
   content: string;
   timestamp: string;
-  likes: number;
-  retweets: number;
-  replies: number;
+  likesCount: number;
+  retweetsCount: number;
+  repliesCount: number;
+  isLiked?: boolean;
+  isRetweeted?: boolean;
   images?: string[];
 }
 
@@ -64,15 +67,17 @@ export function Timeline() {
 
       if (response?.success && response?.data?.tweets) {
         const newTweets = response.data.tweets;
-
+        console.log(response);
         // Formatear tweets para que coincidan con la interfaz esperada
         const formattedTweets: Tweet[] = newTweets.map((tweet: ApiTweet) => ({
           id: tweet._id,
           content: tweet.content,
           timestamp: formatTimestamp(tweet.createdAt),
-          likes: tweet.likes || 0,
-          retweets: tweet.retweets || 0,
-          replies: tweet.replies || 0,
+          likesCount: tweet.likesCount || 0,
+          retweetsCount: tweet.retweetsCount || 0,
+          repliesCount: tweet.repliesCount || 0,
+          isLiked: tweet.isLiked || false,
+          isRetweeted: tweet.isRetweeted || false,
           images: tweet.images || [],
           user: {
             name: tweet.author?.name || tweet.author?.username || "Usuario",

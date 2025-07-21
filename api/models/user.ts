@@ -31,6 +31,13 @@ const userSchema = new Schema<IUserDocument>(
       maxlength: [160, "Bio cannot exceed 160 characters"],
       trim: true,
     },
+    website: {
+      type: String,
+      required: false,
+      default: "",
+      maxlength: [200, "Website URL cannot exceed 200 characters"],
+      trim: true,
+    },
     confirmed: {
       type: Boolean,
       required: [true, "Confirmation status is required"],

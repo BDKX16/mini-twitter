@@ -8,13 +8,14 @@ import { trendsService } from "@/services/trendsService";
 import { ApiResponse } from "@/types/services";
 
 interface User {
-  _id: string;
+  id: string;
   username: string;
   name?: string;
   firstName?: string;
   lastName?: string;
   profileImage?: string;
   followersCount?: number;
+  isFollowing?: boolean;
 }
 
 interface TrendingTopic {
@@ -106,11 +107,28 @@ export function RightSidebar() {
 
   const handleFollow = async (userId: string) => {
     try {
+      const user = suggestedUsers.find((user) => user.id === userId);
       // Implementar lógica de seguir usuario
-      await followService.followUser(userId);
 
-      // Actualizar la UI removiendo el usuario de sugeridos
-      setSuggestedUsers((prev) => prev.filter((user) => user._id !== userId));
+      if (user?.isFollowing) {
+        await followService.unfollowUser(userId);
+
+        // Actualizar la UI removiendo el usuario de sugeridos
+        setSuggestedUsers((prev) =>
+          prev.map((user) =>
+            user.id === userId ? { ...user, isFollowing: false } : user
+          )
+        );
+      } else {
+        await followService.followUser(userId);
+
+        // Actualizar la UI removiendo el usuario de sugeridos
+        setSuggestedUsers((prev) =>
+          prev.map((user) =>
+            user.id === userId ? { ...user, isFollowing: true } : user
+          )
+        );
+      }
     } catch (error) {
       console.error("Error following user:", error);
     }
@@ -196,7 +214,7 @@ export function RightSidebar() {
             <>
               {suggestedUsers.slice(0, 3).map((user) => (
                 <div
-                  key={`user-${user._id}`}
+                  key={`user-${user.id}`}
                   className="hover:bg-gray-100 p-2 rounded cursor-pointer transition-colors"
                 >
                   <div className="flex items-center justify-between">
@@ -222,10 +240,17 @@ export function RightSidebar() {
                     </div>
                     <Button
                       size="sm"
-                      className="bg-black text-white hover:bg-gray-800 rounded-full px-4 py-1"
-                      onClick={() => handleFollow(user._id)}
+                      className={`${
+                        // Twitter blue: #1DA1F2
+                        "border rounded-full px-4 py-1 font-semibold transition-colors"
+                      } ${
+                        user.isFollowing
+                          ? "bg-white text-[#1DA1F2] border-[#1DA1F2] hover:bg-[#E8F5FD]"
+                          : "bg-[#1DA1F2] text-white border-transparent hover:bg-[#1A8CD8]"
+                      }`}
+                      onClick={() => handleFollow(user.id)}
                     >
-                      Seguir
+                      {user.isFollowing ? "Siguiendo" : "Seguir"}
                     </Button>
                   </div>
                 </div>

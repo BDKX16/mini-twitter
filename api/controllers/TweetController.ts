@@ -92,18 +92,22 @@ export class TweetController {
    * Get tweet by ID
    */
   async getTweetById(
-    req: Request,
+    req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
   ): Promise<void> {
     try {
       const { tweetId } = req.params;
+      const currentUserId = req.user?.id;
 
       if (!isValidObjectId(tweetId)) {
         throw new ValidationError("Invalid tweet ID");
       }
 
-      const tweet = await this.tweetService.getTweetById(toObjectId(tweetId));
+      const tweet = await this.tweetService.getTweetById(
+        toObjectId(tweetId),
+        currentUserId ? toObjectId(currentUserId) : undefined
+      );
 
       res.json({
         success: true,
@@ -200,13 +204,14 @@ export class TweetController {
    * Get tweets by author
    */
   async getTweetsByAuthor(
-    req: Request,
+    req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
   ): Promise<void> {
     try {
       const { userId } = req.params;
       const { limit = 20, skip = 0 } = req.query;
+      const currentUserId = req.user?.id;
 
       if (!isValidObjectId(userId)) {
         throw new ValidationError("Invalid user ID");
@@ -214,6 +219,7 @@ export class TweetController {
 
       const tweets = await this.tweetService.getTweetsByUser(
         toObjectId(userId),
+        currentUserId ? toObjectId(currentUserId) : undefined,
         {
           limit: Number(limit),
           skip: Number(skip),
@@ -233,17 +239,21 @@ export class TweetController {
    * Get all tweets (public timeline)
    */
   async getAllTweets(
-    req: Request,
+    req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
   ): Promise<void> {
     try {
       const { limit = 20, skip = 0 } = req.query;
+      const currentUserId = req.user?.id;
 
-      const tweets = await this.tweetService.getAllTweets({
-        limit: Number(limit),
-        skip: Number(skip),
-      });
+      const tweets = await this.tweetService.getAllTweets(
+        currentUserId ? toObjectId(currentUserId) : undefined,
+        {
+          limit: Number(limit),
+          skip: Number(skip),
+        }
+      );
 
       res.json({
         success: true,
@@ -287,14 +297,19 @@ export class TweetController {
    * Get trending tweets
    */
   async getTrendingTweets(
-    req: Request,
+    req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
   ): Promise<void> {
     try {
-      const { limit = 20 } = req.query;
+      const { limit = 20, timeframe = 24 } = req.query;
+      const currentUserId = req.user?.id;
 
-      const tweets = await this.tweetService.getTrendingTweets(Number(limit));
+      const tweets = await this.tweetService.getTrendingTweets(
+        currentUserId ? toObjectId(currentUserId) : undefined,
+        Number(timeframe),
+        Number(limit)
+      );
 
       res.json({
         success: true,
@@ -309,13 +324,14 @@ export class TweetController {
    * Get tweet replies
    */
   async getTweetReplies(
-    req: Request,
+    req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
   ): Promise<void> {
     try {
       const { tweetId } = req.params;
       const { limit = 20, skip = 0 } = req.query;
+      const currentUserId = req.user?.id;
 
       if (!isValidObjectId(tweetId)) {
         throw new ValidationError("Invalid tweet ID");
@@ -323,6 +339,7 @@ export class TweetController {
 
       const replies = await this.tweetService.getTweetReplies(
         toObjectId(tweetId),
+        currentUserId ? toObjectId(currentUserId) : undefined,
         {
           limit: Number(limit),
           skip: Number(skip),
@@ -474,13 +491,14 @@ export class TweetController {
    * Get user tweets (alias for getUserTweetStats to maintain compatibility)
    */
   async getUserTweets(
-    req: Request,
+    req: AuthenticatedRequest,
     res: Response,
     next: NextFunction
   ): Promise<void> {
     try {
       const { userId } = req.params;
       const { page = 1, limit = 10 } = req.query;
+      const currentUserId = req.user?.id;
 
       if (!isValidObjectId(userId)) {
         throw new ValidationError("Invalid user ID");
@@ -488,6 +506,7 @@ export class TweetController {
 
       const tweets = await this.tweetService.getTweetsByUser(
         toObjectId(userId),
+        currentUserId ? toObjectId(currentUserId) : undefined,
         {
           limit: Number(limit),
           skip: (Number(page) - 1) * Number(limit),
@@ -534,7 +553,7 @@ export class TweetController {
   }
 
   /**
-   * Get user timeline
+   * Get user timeline (own tweets only)
    */
   async getTimeline(
     req: AuthenticatedRequest,
@@ -547,15 +566,16 @@ export class TweetController {
       if (!req.user) {
         throw new ValidationError("User not authenticated");
       }
-
-      const timeline = await this.tweetService.getTimeline(
+      // Use getTweetsByUser to get only the user's own tweets
+      const timeline = await this.tweetService.getTweetsByUser(
+        toObjectId(req.user.id),
         toObjectId(req.user.id),
         {
           limit: Number(limit),
           skip: (Number(page) - 1) * Number(limit),
         }
       );
-
+      console.log("Timeline retrieved successfully:", timeline);
       res.json({
         success: true,
         data: { timeline },

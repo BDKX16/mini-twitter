@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Calendar, MapPin, Link as LinkIcon } from "lucide-react";
+import { Calendar, MapPin, Link as LinkIcon, Check, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TweetCard } from "@/components/TweetCard";
 import { tweetService } from "@/services/tweetService";
+import { userService } from "@/services/userService";
+import { followService } from "@/services/followService";
 import { ApiResponse, Tweet as ApiTweet } from "@/types/services";
 
 interface Tweet {
@@ -17,80 +19,142 @@ interface Tweet {
   };
   content: string;
   timestamp: string;
-  likes: number;
-  retweets: number;
-  replies: number;
+  likesCount: number;
+  retweetsCount: number;
+  repliesCount: number;
   images?: string[];
 }
 
-export function Profile() {
+interface ProfileProps {
+  username?: string; // Si no se proporciona, muestra el perfil del usuario actual
+}
+
+export function Profile({ username }: ProfileProps) {
   const [userData, setUserData] = useState<any>(null);
+  const [currentUserData, setCurrentUserData] = useState<any>(null);
   const [userTweets, setUserTweets] = useState<Tweet[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [followError, setFollowError] = useState<string | null>(null);
+  const [isOwnProfile, setIsOwnProfile] = useState(false);
+  const [isFollowLoading, setIsFollowLoading] = useState(false);
 
   // Cargar tweets del usuario
   useEffect(() => {
-    const loadMyTweets = async () => {
+    const loadUserData = async () => {
       try {
         setLoading(true);
-        const response = (await tweetService.getMyTimeline({
-          limit: 50,
-        })) as unknown as ApiResponse<{ timeline: ApiTweet[] }>;
-        if (response?.success && response?.data?.timeline) {
-          const tweets = response.data.timeline;
 
-          // Formatear tweets para que coincidan con la interfaz esperada
-          const formattedTweets: Tweet[] = tweets.map((tweet: ApiTweet) => ({
-            id: tweet._id,
-            content: tweet.content,
-            timestamp: formatTimestamp(tweet.createdAt),
-            likes: tweet.likes || 0,
-            retweets: tweet.retweets || 0,
-            replies: tweet.replies || 0,
-            images: tweet.images || [],
-            user: {
-              name: tweet.author?.name || tweet.author?.username || "Usuario",
-              username: tweet.author?.username || "usuario",
-              avatar:
-                tweet.author?.profileImage ||
-                "https://images.pexels.com/photos/771742/pexels-photo-771742.jpeg?auto=compress&cs=tinysrgb&w=400",
-            },
-          }));
+        // Obtener datos del usuario actual del localStorage
+        const currentUserDataString = localStorage.getItem("userData");
+        if (currentUserDataString) {
+          const currentUser = JSON.parse(currentUserDataString);
+          setCurrentUserData(currentUser?.username);
+          console.log(currentUser);
+          console.log(username);
+          // Si no se especifica username, mostrar perfil del usuario actual
+          if (!username) {
+            setUserData(currentUser);
+            setIsOwnProfile(true);
+            await loadUserTweets(currentUser.id, true); // Pasar true porque es el perfil propio
+            return;
+          } else {
+            // Verificar si es el propio perfil
+            const ownProfile = currentUser.username === username;
+            setIsOwnProfile(ownProfile);
+          }
+        }
 
-          setUserTweets(formattedTweets);
-        } else {
-          setUserTweets([]);
+        // Si se especifica un username, obtener datos del usuario
+        if (username) {
+          try {
+            const userResponse = await userService.getUserByUsername(username);
+            console.log("User response:", userResponse);
+
+            // La respuesta viene como:  { data: { success: true, data: { user: {...} } } }
+            if (userResponse?.success && userResponse?.data?.user) {
+              const isOwn =
+                JSON.parse(localStorage.getItem("userData")!)?.username ===
+                username;
+              setUserData(userResponse.data.user);
+              await loadUserTweets(userResponse.data.user.id, isOwn);
+            } else {
+              setError("Usuario no encontrado");
+              return;
+            }
+          } catch (err) {
+            console.error("Error loading user data:", err);
+            setError("Error cargando datos del usuario");
+            return;
+          }
         }
       } catch (error) {
-        console.error("Error loading my tweets:", error);
-        setError("Error cargando tus tweets");
-        setUserTweets([]);
+        console.error("Error loading profile:", error);
+        setError("Error cargando el perfil");
       } finally {
         setLoading(false);
       }
     };
 
-    const userDataString = localStorage.getItem("userData");
-    const token = localStorage.getItem("token");
-
-    if (userDataString) {
+    const loadUserTweets = async (userId: string, isOwn?: boolean) => {
       try {
-        const user = JSON.parse(userDataString);
-        setUserData(user);
-      } catch (error) {
-        console.error("Error parsing user data from localStorage:", error);
-      }
-    }
+        let response;
+        const shouldUseMyTimeline = isOwn !== undefined ? isOwn : isOwnProfile;
+        if (shouldUseMyTimeline) {
+          // Para el propio perfil, usar el timeline personal
+          response = await tweetService.getMyTimeline({
+            limit: 50,
+          });
+        } else {
+          // Para otros usuarios, obtener sus tweets públicos
+          response = await tweetService.getUserTweets(userId, {
+            limit: 50,
+            page: 1,
+          });
+        }
 
-    // Solo cargar tweets si hay un token (usuario autenticado)
-    if (token) {
-      loadMyTweets();
-    } else {
-      setLoading(false);
-      setUserTweets([]);
-    }
-  }, []);
+        // La respuesta viene como: { data: { success: true, data: { timeline/tweets: [...] } } }
+        let tweets = [];
+        let currentUser = null;
+        if (response?.success && response?.data) {
+          tweets = response.data.timeline || response.data.tweets || [];
+        }
+        if (shouldUseMyTimeline) {
+          const user = localStorage.getItem("userData");
+          if (user) {
+            currentUser = JSON.parse(user);
+          }
+        }
+
+        console.log(currentUser);
+        // Formatear tweets para que coincidan con la interfaz esperada
+        const formattedTweets: Tweet[] = tweets.map((tweet: any) => ({
+          id: tweet._id,
+          content: tweet.content,
+          timestamp: formatTimestamp(tweet.createdAt),
+          likesCount: tweet.likesCount || 0,
+          retweetsCount: tweet.retweetsCount || 0,
+          repliesCount: tweet.repliesCount || 0,
+          images: tweet.images || [],
+          user: {
+            name: currentUser?.name || currentUser?.username || "Usuario",
+            username: currentUser?.username || "usuario",
+            avatar:
+              currentUser?.avatar ||
+              "https://images.pexels.com/photos/771742/pexels-photo-771742.jpeg?auto=compress&cs=tinysrgb&w=400",
+          },
+        }));
+
+        setUserTweets(formattedTweets);
+      } catch (error) {
+        console.error("Error loading tweets:", error);
+        setError("Error cargando tweets");
+        setUserTweets([]);
+      }
+    };
+
+    loadUserData();
+  }, [username]);
 
   // Formatear timestamp relativo
   const formatTimestamp = (dateString: string) => {
@@ -106,12 +170,55 @@ export function Profile() {
     if (minutes > 0) return `${minutes}m`;
     return "ahora";
   };
+
+  // Función para seguir/dejar de seguir
+  const handleFollowToggle = async () => {
+    if (!userData || isOwnProfile || isFollowLoading) return;
+
+    try {
+      setIsFollowLoading(true);
+
+      if (userData.isFollowing) {
+        // Dejar de seguir
+        const response = await followService.unfollowUser(userData.id);
+        // Verificar éxito de la respuesta
+        if (response.status === 200 || response.data?.success !== false) {
+          setUserData((prev: any) => ({
+            ...prev,
+            isFollowing: false,
+            followersCount: Math.max(0, (prev.followersCount || 0) - 1),
+          }));
+        }
+      } else {
+        // Seguir
+        const response = await followService.followUser(userData.id);
+        // Verificar éxito de la respuesta
+        if (response.status === 200 || response.data?.success !== false) {
+          setUserData((prev: any) => ({
+            ...prev,
+            isFollowing: true,
+            followersCount: (prev.followersCount || 0) + 1,
+          }));
+        }
+      }
+    } catch (error) {
+      console.error("Error toggling follow status:", error);
+      setFollowError(
+        userData.isFollowing ? "Error al dejar de seguir" : "Error al seguir"
+      );
+      // Limpiar error después de 3 segundos
+      setTimeout(() => setFollowError(null), 3000);
+    } finally {
+      setIsFollowLoading(false);
+    }
+  };
+
   const displayName =
     userData?.name ||
     `${userData?.firstName || ""} ${userData?.lastName || ""}`.trim() ||
     userData?.username ||
-    "Tu Usuario";
-  const username = userData?.username || "tuusuario";
+    "Usuario";
+  const userUsername = userData?.username || "usuario";
   const avatar =
     userData?.avatar ||
     userData?.profileImage ||
@@ -126,6 +233,13 @@ export function Profile() {
         </div>
       </div>
 
+      {/* Mensaje de error para acciones de seguimiento */}
+      {followError && (
+        <div className="mx-4 mt-4 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-md">
+          <p className="text-sm">{followError}</p>
+        </div>
+      )}
+
       <div className="relative">
         <div className="h-48 bg-gradient-to-r from-blue-400 to-purple-500"></div>
         <div className="absolute -bottom-16 left-4">
@@ -139,44 +253,79 @@ export function Profile() {
 
       <div className="pt-20 px-4 pb-4">
         <div className="flex justify-end mb-4">
-          <Button className="rounded-full border border-gray-300 bg-white text-gray-900 hover:bg-gray-50">
-            Editar perfil
-          </Button>
+          {isOwnProfile ? (
+            <Button className="rounded-full border border-gray-300 bg-white text-gray-900 hover:bg-gray-50 px-6 py-2 font-medium">
+              Editar perfil
+            </Button>
+          ) : userData?.isFollowing ? (
+            <Button
+              className="rounded-full border-2 border-blue-500 bg-white text-blue-500 hover:bg-red-500 hover:border-red-500 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 px-6 py-2 font-medium group min-w-[120px]"
+              onClick={handleFollowToggle}
+              disabled={isFollowLoading}
+            >
+              <span className="flex items-center group-hover:hidden">
+                <Check className="w-4 h-4 mr-2" />
+                {isFollowLoading ? "Procesando..." : "Siguiendo"}
+              </span>
+              <span className="hidden group-hover:flex items-center">
+                {isFollowLoading ? "Procesando..." : "Dejar de seguir"}
+              </span>
+            </Button>
+          ) : (
+            <Button
+              className="rounded-full bg-blue-500 hover:bg-blue-600 text-white border-2 border-blue-500 hover:border-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 px-6 py-2 font-medium min-w-[120px]"
+              onClick={handleFollowToggle}
+              disabled={isFollowLoading}
+            >
+              <span className="flex items-center">
+                <Plus className="w-4 h-4 mr-2" />
+                {isFollowLoading ? "Procesando..." : "Seguir"}
+              </span>
+            </Button>
+          )}
         </div>
 
         <div>
           <h1 className="text-2xl font-bold">{displayName}</h1>
-          <p className="text-gray-500">@{username}</p>
+          <p className="text-gray-500">@{userUsername}</p>
 
           <p className="mt-3 text-gray-900">
-            Desarrollador apasionado por la tecnología y la innovación. Amante
-            del código limpio y las nuevas tecnologías.
+            {userData?.bio ||
+              "Desarrollador apasionado por la tecnología y la innovación. Amante del código limpio y las nuevas tecnologías."}
           </p>
 
           <div className="flex flex-wrap items-center gap-4 mt-3 text-gray-500">
             <div className="flex items-center">
               <MapPin className="w-4 h-4 mr-1" />
-              <span>Madrid, España</span>
+              <span>{userData?.location || "Madrid, España"}</span>
             </div>
             <div className="flex items-center">
               <LinkIcon className="w-4 h-4 mr-1" />
-              <a href="#" className="text-blue-500 hover:underline">
-                miwebsite.com
+              <a
+                href={userData?.website || "#"}
+                className="text-blue-500 hover:underline"
+              >
+                {userData?.website || "miwebsite.com"}
               </a>
             </div>
             <div className="flex items-center">
               <Calendar className="w-4 h-4 mr-1" />
-              <span>Se unió en enero de 2024</span>
+              <span>
+                Se unió en{" "}
+                {userData?.createdAt
+                  ? new Date(userData.createdAt).toLocaleDateString()
+                  : "enero de 2024"}
+              </span>
             </div>
           </div>
 
           <div className="flex gap-6 mt-3">
             <div>
-              <span className="font-bold">234</span>
+              <span className="font-bold">{userData?.followingCount || 0}</span>
               <span className="text-gray-500 ml-1">Siguiendo</span>
             </div>
             <div>
-              <span className="font-bold">1,847</span>
+              <span className="font-bold">{userData?.followersCount || 0}</span>
               <span className="text-gray-500 ml-1">Seguidores</span>
             </div>
           </div>
@@ -230,10 +379,16 @@ export function Profile() {
             </div>
           ) : (
             <div className="p-8 text-center text-gray-500">
-              <p>Aún no has publicado ningún tweet</p>
-              <p className="text-sm mt-2">
-                ¡Comparte tus pensamientos con el mundo!
+              <p>
+                {isOwnProfile
+                  ? "Aún no has publicado ningún tweet"
+                  : `${displayName} aún no ha publicado ningún tweet`}
               </p>
+              {isOwnProfile && (
+                <p className="text-sm mt-2">
+                  ¡Comparte tus pensamientos con el mundo!
+                </p>
+              )}
             </div>
           )}
         </TabsContent>

@@ -32,32 +32,21 @@ const tweetSchema = new Schema<ITweetDocument>(
       default: Date.now,
       index: true,
     },
-    likes: [
-      {
-        user: {
-          type: Schema.Types.ObjectId,
-          ref: "User",
-          required: true,
-        },
-        createdAt: {
-          type: Date,
-          default: Date.now,
-        },
-      },
-    ],
-    retweets: [
-      {
-        user: {
-          type: Schema.Types.ObjectId,
-          ref: "User",
-          required: true,
-        },
-        createdAt: {
-          type: Date,
-          default: Date.now,
-        },
-      },
-    ],
+    likesCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    retweetsCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    repliesCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     mentions: [
       {
         type: Schema.Types.ObjectId,
@@ -104,10 +93,8 @@ const tweetSchema = new Schema<ITweetDocument>(
         ret.id = ret._id;
         delete ret._id;
 
-        // Add computed fields
-        ret.likesCount = ret.likes ? ret.likes.length : 0;
-        ret.retweetsCount = ret.retweets ? ret.retweets.length : 0;
-
+        // The counts are already in the document
+        // No need to calculate from arrays
         return ret;
       },
     },
@@ -115,8 +102,7 @@ const tweetSchema = new Schema<ITweetDocument>(
       transform: function (doc, ret) {
         ret.id = ret._id;
         delete ret._id;
-        ret.likesCount = ret.likes ? ret.likes.length : 0;
-        ret.retweetsCount = ret.retweets ? ret.retweets.length : 0;
+        // The counts are already in the document
         return ret;
       },
     },
@@ -132,57 +118,42 @@ tweetSchema.index({ mentions: 1 });
 // Text index for search functionality
 tweetSchema.index({ content: "text" });
 
-// Instance methods
-tweetSchema.methods.isLikedBy = function (userId: MongooseObjectId): boolean {
-  return this.likes.some(
-    (like: ITweetLike) => like.user.toString() === userId.toString()
-  );
-};
-
-tweetSchema.methods.isRetweetedBy = function (
-  userId: MongooseObjectId
-): boolean {
-  return this.retweets.some(
-    (retweet: ITweetRetweet) => retweet.user.toString() === userId.toString()
-  );
-};
-
-tweetSchema.methods.addLike = function (userId: MongooseObjectId): void {
-  if (!this.isLikedBy(userId)) {
-    this.likes.push({
-      user: userId,
-      createdAt: new Date(),
-    });
-  }
-};
-
-tweetSchema.methods.removeLike = function (userId: MongooseObjectId): void {
-  this.likes = this.likes.filter(
-    (like: ITweetLike) => like.user.toString() !== userId.toString()
-  );
-};
-
-tweetSchema.methods.addRetweet = function (userId: MongooseObjectId): void {
-  if (!this.isRetweetedBy(userId)) {
-    this.retweets.push({
-      user: userId,
-      createdAt: new Date(),
-    });
-  }
-};
-
-tweetSchema.methods.removeRetweet = function (userId: MongooseObjectId): void {
-  this.retweets = this.retweets.filter(
-    (retweet: ITweetRetweet) => retweet.user.toString() !== userId.toString()
-  );
-};
-
+// Instance methods - these will be removed since we don't use arrays anymore
+// Like/retweet status will be checked via separate queries to Like/Retweet collections
 tweetSchema.methods.getLikesCount = function (): number {
-  return this.likes.length;
+  return this.likesCount || 0;
 };
 
 tweetSchema.methods.getRetweetsCount = function (): number {
-  return this.retweets.length;
+  return this.retweetsCount || 0;
+};
+
+tweetSchema.methods.getRepliesCount = function (): number {
+  return this.repliesCount || 0;
+};
+
+tweetSchema.methods.incrementLikes = function (): void {
+  this.likesCount = (this.likesCount || 0) + 1;
+};
+
+tweetSchema.methods.decrementLikes = function (): void {
+  this.likesCount = Math.max((this.likesCount || 0) - 1, 0);
+};
+
+tweetSchema.methods.incrementRetweets = function (): void {
+  this.retweetsCount = (this.retweetsCount || 0) + 1;
+};
+
+tweetSchema.methods.decrementRetweets = function (): void {
+  this.retweetsCount = Math.max((this.retweetsCount || 0) - 1, 0);
+};
+
+tweetSchema.methods.incrementReplies = function (): void {
+  this.repliesCount = (this.repliesCount || 0) + 1;
+};
+
+tweetSchema.methods.decrementReplies = function (): void {
+  this.repliesCount = Math.max((this.repliesCount || 0) - 1, 0);
 };
 
 tweetSchema.methods.softDelete = function (): void {
@@ -234,10 +205,12 @@ tweetSchema.statics.getTrending = function (hours: number = 24) {
     },
     {
       $addFields: {
-        likesCount: { $size: "$likes" },
-        retweetsCount: { $size: "$retweets" },
         totalEngagement: {
-          $add: [{ $size: "$likes" }, { $size: "$retweets" }],
+          $add: [
+            { $ifNull: ["$likesCount", 0] },
+            { $ifNull: ["$retweetsCount", 0] },
+            { $ifNull: ["$repliesCount", 0] },
+          ],
         },
       },
     },

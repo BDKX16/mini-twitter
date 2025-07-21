@@ -21,9 +21,11 @@ export interface Tweet {
     name: string;
     profileImage?: string;
   };
-  likes: number;
-  retweets: number;
-  replies: number;
+  likesCount: number;
+  retweetsCount: number;
+  repliesCount: number;
+  isLiked?: boolean;
+  isRetweeted?: boolean;
   createdAt: string;
   updatedAt: string;
 }

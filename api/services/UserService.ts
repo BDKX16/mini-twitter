@@ -4,6 +4,8 @@
  */
 
 import { UserRepository } from "../infraestructure/database/UserRepository";
+import { FollowRepository } from "../infraestructure/database/FollowRepository";
+import { FollowService } from "./FollowService";
 import {
   CreateUserData,
   UpdateUserData,
@@ -19,9 +21,13 @@ import { ValidationError, NotFoundError, ConflictError } from "../utils/errors";
 
 export class UserService implements IBaseService {
   private userRepository: UserRepository;
+  private followRepository: FollowRepository;
+  private followService: FollowService;
 
   constructor() {
     this.userRepository = new UserRepository();
+    this.followRepository = new FollowRepository();
+    this.followService = new FollowService();
   }
 
   /**
@@ -74,6 +80,64 @@ export class UserService implements IBaseService {
       throw new NotFoundError("User not found");
     }
     return this.sanitizeUser(user);
+  }
+
+  /**
+   * Get user by username
+   */
+  async getUserByUsername(username: string): Promise<SanitizedUser> {
+    const user = await this.userRepository.findByUsername(username);
+    if (!user) {
+      throw new NotFoundError("User not found");
+    }
+    return this.sanitizeUser(user);
+  }
+
+  /**
+   * Get user by username with follow status
+   */
+  async getUserByUsernameWithFollowStatus(
+    username: string,
+    currentUserId?: MongooseObjectId
+  ): Promise<
+    SanitizedUser & {
+      isFollowing?: boolean;
+      followersCount: number;
+      followingCount: number;
+    }
+  > {
+    const user = await this.userRepository.findByUsername(username);
+    if (!user) {
+      throw new NotFoundError("User not found");
+    }
+
+    const sanitizedUser = this.sanitizeUser(user);
+
+    // Get follower and following counts
+    const [followersCount, followingCount] = await Promise.all([
+      this.followRepository.countFollowers(user._id!),
+      this.followRepository.countFollowing(user._id!),
+    ]);
+
+    // If current user is provided, check if they follow this user
+    if (currentUserId && user._id) {
+      const isFollowing = await this.followService.isFollowing(
+        currentUserId,
+        user._id
+      );
+      return {
+        ...sanitizedUser,
+        isFollowing,
+        followersCount,
+        followingCount,
+      };
+    }
+
+    return {
+      ...sanitizedUser,
+      followersCount,
+      followingCount,
+    };
   }
 
   /**
@@ -420,14 +484,31 @@ export class UserService implements IBaseService {
     limit: number = 10
   ): Promise<SanitizedUser[]> {
     try {
-      const options: ServiceOptions = { limit, page: 1 };
+      // Get users that the current user is already following (using find method directly to avoid populate)
+      const followingRelations = await this.followRepository.find({
+        follower: userId,
+      });
+      const followingIds = followingRelations.map((follow) =>
+        follow.following.toString()
+      );
+
+      // Get all users with a higher limit to account for filtering
+      const options: ServiceOptions = { limit: limit * 3, page: 1 };
       const users = await this.userRepository.findAll(options);
 
-      // Filter out the current user and return suggestions
-      return users
-        .filter((user) => user._id?.toString() !== userId.toString())
+      // Filter out the current user and users already being followed
+      const suggestedUsers = users
+        .filter((user) => {
+          const userIdStr = user._id?.toString();
+          return (
+            userIdStr !== userId.toString() &&
+            !followingIds.includes(userIdStr!)
+          );
+        })
         .slice(0, limit)
         .map((user) => this.sanitizeUser(user));
+
+      return suggestedUsers;
     } catch (error) {
       throw error;
     }

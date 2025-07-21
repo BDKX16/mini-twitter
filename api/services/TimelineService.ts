@@ -6,6 +6,9 @@
 import { TweetRepository } from "../infraestructure/database/TweetRepository";
 import { FollowRepository } from "../infraestructure/database/FollowRepository";
 import { UserRepository } from "../infraestructure/database/UserRepository";
+import { LikeRepository } from "../infraestructure/database/LikeRepository";
+import { RetweetRepository } from "../infraestructure/database/RetweetRepository";
+import { TweetService } from "./TweetService";
 import {
   ServiceOptions,
   ValidationResult,
@@ -18,22 +21,29 @@ export class TimelineService implements IBaseService {
   private tweetRepository: TweetRepository;
   private followRepository: FollowRepository;
   private userRepository: UserRepository;
+  private likeRepository: LikeRepository;
+  private retweetRepository: RetweetRepository;
+  private tweetService: TweetService;
 
   constructor() {
     this.tweetRepository = new TweetRepository();
     this.followRepository = new FollowRepository();
     this.userRepository = new UserRepository();
+    this.likeRepository = new LikeRepository();
+    this.retweetRepository = new RetweetRepository();
+    this.tweetService = new TweetService();
   }
 
   /**
-   * Get user's home timeline (tweets from followed users)
+   * Get user's home timeline (tweets from followed users + famous users)
    */
   async getHomeTimeline(
     userId: MongooseObjectId,
+    currentUserId?: MongooseObjectId,
     options: ServiceOptions = {}
   ): Promise<{
     userId: MongooseObjectId;
-    tweets: ITweetDocument[];
+    tweets: any[];
     totalTweets: number;
   }> {
     const { limit = 20, skip = 0 } = options;
@@ -44,7 +54,55 @@ export class TimelineService implements IBaseService {
       throw new NotFoundError("User not found");
     }
 
-    // Get tweets from followed users
+    // Get tweets from followed users + famous users
+    const tweets = await this.tweetRepository.getHomeTimeline(userId, {
+      limit,
+      skip,
+      populate: "author",
+    });
+
+    // Enrich tweets with user interaction data
+    const enrichedTweets = await this.tweetService.enrichTweetsWithUserData(
+      tweets,
+      currentUserId || userId
+    );
+
+    const totalTweets = await this.tweetRepository.countHomeTimelineTweets(
+      userId
+    );
+
+    return {
+      userId,
+      tweets: enrichedTweets,
+      totalTweets,
+    };
+  }
+
+  /**
+   * Get enhanced home timeline with mixed content
+   */
+  async getEnhancedHomeTimeline(
+    userId: MongooseObjectId,
+    options: ServiceOptions = {}
+  ): Promise<{
+    userId: MongooseObjectId;
+    tweets: ITweetDocument[];
+    totalTweets: number;
+    contentMix: {
+      followedUsers: number;
+      famousUsers: number;
+      ownTweets: number;
+    };
+  }> {
+    const { limit = 20, skip = 0 } = options;
+
+    // Verify user exists
+    const user = await this.userRepository.findById(userId);
+    if (!user) {
+      throw new NotFoundError("User not found");
+    }
+
+    // Get enhanced timeline with mixed content
     const tweets = await this.tweetRepository.getHomeTimeline(userId, {
       limit,
       skip,
@@ -55,10 +113,37 @@ export class TimelineService implements IBaseService {
       userId
     );
 
+    // Calculate content mix for analytics
+    const contentMix = {
+      followedUsers: 0,
+      famousUsers: 0,
+      ownTweets: 0,
+    };
+
+    // Get following list for classification
+    const followedUsers = await this.followRepository.findFollowing(userId);
+    const followingIds = followedUsers.map(
+      (follow: any) => follow.following._id || follow.following
+    );
+
+    tweets.forEach((tweet) => {
+      const authorId = tweet.author._id || tweet.author;
+      if (authorId.toString() === userId.toString()) {
+        contentMix.ownTweets++;
+      } else if (
+        followingIds.some((id: any) => id.toString() === authorId.toString())
+      ) {
+        contentMix.followedUsers++;
+      } else {
+        contentMix.famousUsers++;
+      }
+    });
+
     return {
       userId,
       tweets,
       totalTweets,
+      contentMix,
     };
   }
 

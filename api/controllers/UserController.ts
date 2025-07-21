@@ -212,6 +212,38 @@ export class UserController {
   }
 
   /**
+   * Get user by username
+   */
+  async getUserByUsername(
+    req: AuthenticatedRequest,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const { username } = req.params;
+
+      if (!username) {
+        throw new ValidationError("Username is required");
+      }
+
+      // Get current user ID if authenticated
+      const currentUserId = req.user?.id ? toObjectId(req.user.id) : undefined;
+
+      const user = await this.userService.getUserByUsernameWithFollowStatus(
+        username,
+        currentUserId
+      );
+
+      res.json({
+        success: true,
+        data: { user },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * Search users
    */
   async searchUsers(

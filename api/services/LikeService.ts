@@ -32,7 +32,12 @@ export class LikeService implements IBaseService {
   async likeTweet(
     userId: MongooseObjectId,
     tweetId: MongooseObjectId
-  ): Promise<ILikeDocument> {
+  ): Promise<{
+    tweet: any;
+    message: string;
+    likesCount: number;
+    isLiked: boolean;
+  }> {
     try {
       // Verify user exists
       const user = await this.userRepository.findById(userId);
@@ -46,23 +51,38 @@ export class LikeService implements IBaseService {
         throw new NotFoundError("Tweet not found");
       }
 
-      // Check if like already exists
-      const existingLike = await this.likeRepository.findByUserAndTweet(
-        userId,
-        tweetId
+      // Check if user has already liked this tweet
+      const hasLiked = await this.tweetRepository.hasUserLikedTweet(
+        tweetId,
+        userId
       );
-      if (existingLike) {
+      if (hasLiked) {
         throw new ConflictError("You have already liked this tweet");
       }
 
-      // Create like
-      const like = await this.likeRepository.create({
+      // Add like to tweet atomically (updates the tweet's likes array)
+      const updatedTweet = await this.tweetRepository.addLikeToTweet(
+        tweetId,
+        userId
+      );
+
+      if (!updatedTweet) {
+        throw new ConflictError("Tweet may have already been liked by user");
+      }
+
+      // Also create a separate like record for analytics/timeline purposes
+      const likeRecord = await this.likeRepository.create({
         user: userId,
         tweet: tweetId,
         createdAt: new Date(),
       } as Partial<ILikeDocument>);
 
-      return like;
+      return {
+        tweet: updatedTweet,
+        message: "Tweet liked successfully",
+        likesCount: updatedTweet.likesCount,
+        isLiked: true,
+      };
     } catch (error: any) {
       throw error;
     }
@@ -74,7 +94,12 @@ export class LikeService implements IBaseService {
   async unlikeTweet(
     userId: MongooseObjectId,
     tweetId: MongooseObjectId
-  ): Promise<{ message: string }> {
+  ): Promise<{
+    tweet: any;
+    message: string;
+    likesCount: number;
+    isLiked: boolean;
+  }> {
     try {
       // Verify user exists
       const user = await this.userRepository.findById(userId);
@@ -88,22 +113,40 @@ export class LikeService implements IBaseService {
         throw new NotFoundError("Tweet not found");
       }
 
-      // Check if like exists
+      // Check if user has liked this tweet
+      const hasLiked = await this.tweetRepository.hasUserLikedTweet(
+        tweetId,
+        userId
+      );
+      if (!hasLiked) {
+        throw new NotFoundError("You have not liked this tweet");
+      }
+
+      // Remove like from tweet atomically (updates the tweet's likes array)
+      const updatedTweet = await this.tweetRepository.removeLikeFromTweet(
+        tweetId,
+        userId
+      );
+
+      if (!updatedTweet) {
+        throw new Error("Failed to remove like from tweet");
+      }
+
+      // Also remove the separate like record
       const existingLike = await this.likeRepository.findByUserAndTweet(
         userId,
         tweetId
       );
-      if (!existingLike) {
-        throw new NotFoundError("You have not liked this tweet");
+      if (existingLike) {
+        await this.likeRepository.deleteById(existingLike._id!);
       }
 
-      // Delete like
-      const deleted = await this.likeRepository.deleteById(existingLike._id!);
-      if (!deleted) {
-        throw new Error("Failed to unlike tweet");
-      }
-
-      return { message: "Tweet unliked successfully" };
+      return {
+        tweet: updatedTweet,
+        message: "Tweet unliked successfully",
+        likesCount: updatedTweet.likesCount,
+        isLiked: false,
+      };
     } catch (error: any) {
       throw error;
     }
@@ -115,16 +158,38 @@ export class LikeService implements IBaseService {
   async toggleLike(
     userId: MongooseObjectId,
     tweetId: MongooseObjectId
-  ): Promise<LikeResult> {
+  ): Promise<{
+    action: "liked" | "unliked";
+    tweet: any;
+    likesCount: number;
+    isLiked: boolean;
+  }> {
     try {
-      const result = await this.likeRepository.toggleLike(userId, tweetId);
-      const likesCount = await this.likeRepository.countByTweet(tweetId);
+      // Check if user has already liked this tweet
+      const hasLiked = await this.tweetRepository.hasUserLikedTweet(
+        tweetId,
+        userId
+      );
 
-      return {
-        action: result.action as "liked" | "unliked",
-        like: result.like,
-        likesCount,
-      };
+      if (hasLiked) {
+        // Unlike the tweet
+        const result = await this.unlikeTweet(userId, tweetId);
+        return {
+          action: "unliked",
+          tweet: result.tweet,
+          likesCount: result.likesCount,
+          isLiked: false,
+        };
+      } else {
+        // Like the tweet
+        const result = await this.likeTweet(userId, tweetId);
+        return {
+          action: "liked",
+          tweet: result.tweet,
+          likesCount: result.likesCount,
+          isLiked: true,
+        };
+      }
     } catch (error: any) {
       throw error;
     }

@@ -13,6 +13,7 @@ export interface IUser {
   password: string;
   confirmed: boolean;
   bio: string;
+  website?: string;
   nullDate?: Date | null;
   createdAt: Date;
   firstName?: string;
@@ -41,8 +42,9 @@ export interface ITweet {
   author: MongooseObjectId;
   content: string;
   createdAt: Date;
-  likes: ITweetLike[];
-  retweets: ITweetRetweet[];
+  likesCount: number;
+  retweetsCount: number;
+  repliesCount: number;
   mentions: MongooseObjectId[];
   hashtags: string[];
   images?: string[];

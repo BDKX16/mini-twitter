@@ -30,7 +30,12 @@ export class RetweetService implements IBaseService {
   /**
    * Retweet a tweet
    */
-  async retweetTweet(data: CreateRetweetData): Promise<IRetweetDocument> {
+  async retweetTweet(data: CreateRetweetData): Promise<{
+    tweet: any;
+    message: string;
+    retweetsCount: number;
+    isRetweeted: boolean;
+  }> {
     try {
       // Verify user exists
       const user = await this.userRepository.findById(data.userId);
@@ -44,24 +49,41 @@ export class RetweetService implements IBaseService {
         throw new NotFoundError("Tweet not found");
       }
 
-      // Check if already retweeted
-      const existingRetweet = await this.retweetRepository.findByUserAndTweet(
-        data.userId,
-        data.tweetId
+      // Check if user has already retweeted this tweet
+      const hasRetweeted = await this.tweetRepository.hasUserRetweetedTweet(
+        data.tweetId,
+        data.userId
       );
-      if (existingRetweet) {
+      if (hasRetweeted) {
         throw new ConflictError("You have already retweeted this tweet");
       }
 
-      // Create retweet
-      const retweet = await this.retweetRepository.create({
+      // Add retweet to tweet atomically (updates the tweet's retweets array)
+      const updatedTweet = await this.tweetRepository.addRetweetToTweet(
+        data.tweetId,
+        data.userId
+      );
+
+      if (!updatedTweet) {
+        throw new ConflictError(
+          "Tweet may have already been retweeted by user"
+        );
+      }
+
+      // Also create a separate retweet record for analytics/timeline purposes
+      const retweetRecord = await this.retweetRepository.create({
         user: data.userId,
         tweet: data.tweetId,
         comment: data.comment || "",
         createdAt: new Date(),
       } as Partial<IRetweetDocument>);
 
-      return retweet;
+      return {
+        tweet: updatedTweet,
+        message: "Tweet retweeted successfully",
+        retweetsCount: updatedTweet.retweetsCount,
+        isRetweeted: true,
+      };
     } catch (error: any) {
       throw error;
     }
@@ -73,7 +95,12 @@ export class RetweetService implements IBaseService {
   async unretweetTweet(
     userId: MongooseObjectId,
     tweetId: MongooseObjectId
-  ): Promise<{ message: string }> {
+  ): Promise<{
+    tweet: any;
+    message: string;
+    retweetsCount: number;
+    isRetweeted: boolean;
+  }> {
     try {
       // Verify user exists
       const user = await this.userRepository.findById(userId);
@@ -87,24 +114,40 @@ export class RetweetService implements IBaseService {
         throw new NotFoundError("Tweet not found");
       }
 
-      // Check if retweet exists
+      // Check if user has retweeted this tweet
+      const hasRetweeted = await this.tweetRepository.hasUserRetweetedTweet(
+        tweetId,
+        userId
+      );
+      if (!hasRetweeted) {
+        throw new NotFoundError("You have not retweeted this tweet");
+      }
+
+      // Remove retweet from tweet atomically (updates the tweet's retweets array)
+      const updatedTweet = await this.tweetRepository.removeRetweetFromTweet(
+        tweetId,
+        userId
+      );
+
+      if (!updatedTweet) {
+        throw new Error("Failed to remove retweet from tweet");
+      }
+
+      // Also remove the separate retweet record
       const existingRetweet = await this.retweetRepository.findByUserAndTweet(
         userId,
         tweetId
       );
-      if (!existingRetweet) {
-        throw new NotFoundError("You have not retweeted this tweet");
+      if (existingRetweet) {
+        await this.retweetRepository.deleteById(existingRetweet._id!);
       }
 
-      // Delete retweet
-      const deleted = await this.retweetRepository.deleteById(
-        existingRetweet._id!
-      );
-      if (!deleted) {
-        throw new Error("Failed to unretweet tweet");
-      }
-
-      return { message: "Tweet unretweeted successfully" };
+      return {
+        tweet: updatedTweet,
+        message: "Tweet unretweeted successfully",
+        retweetsCount: updatedTweet.retweetsCount,
+        isRetweeted: false,
+      };
     } catch (error: any) {
       throw error;
     }

@@ -345,68 +345,103 @@ export class TweetRepository
       const famousUserIds = famousUsersAgg.map((user: any) => user._id);
 
       // Combine followed users, famous users, and user's own tweets
-      const authorIds = [...new Set([...followingIds, ...famousUserIds, userId])];
-
-      // Now get tweets from these users with weighted distribution
-      const pipeline = [
-        {
-          $match: {
-            author: { $in: authorIds },
-          },
-        },
-        {
-          $lookup: {
-            from: "users",
-            localField: "author",
-            foreignField: "_id",
-            as: "author",
-          },
-        },
-        {
-          $unwind: "$author",
-        },
-        {
-          $addFields: {
-            // Add priority scoring for better content mixing
-            priority: {
-              $cond: [
-                { $eq: ["$author._id", userId] }, // User's own tweets
-                3,
-                {
-                  $cond: [
-                    { $in: ["$author._id", followingIds] }, // Followed users
-                    2,
-                    1, // Famous users
-                  ],
-                },
-              ],
-            },
-          },
-        },
-        {
-          $sort: { 
-            priority: -1, // Higher priority first
-            createdAt: -1, // Then by recency
-          },
-        },
+      const authorIds = [
+        ...new Set([...followingIds, ...famousUserIds, userId]),
       ];
 
-      if (options.skip) {
-        pipeline.push({ $skip: options.skip } as any);
-      }
+      // Get tweets from different categories separately for better mixing
+      const [followedTweets, famousTweets, ownTweets] = await Promise.all([
+        // Tweets from followed users (if any)
+        followingIds.length > 0
+          ? this.aggregate([
+              { $match: { author: { $in: followingIds } } },
+              {
+                $lookup: {
+                  from: "users",
+                  localField: "author",
+                  foreignField: "_id",
+                  as: "author",
+                },
+              },
+              { $unwind: "$author" },
+              { $sort: { createdAt: -1 } },
+              { $limit: Math.ceil((options.limit || 20) * 0.6) }, // 60% followed users
+            ])
+          : [],
 
-      if (options.limit) {
-        pipeline.push({ $limit: options.limit } as any);
-      }
+        // Tweets from famous users
+        this.aggregate([
+          { $match: { author: { $in: famousUserIds, $ne: userId } } },
+          {
+            $lookup: {
+              from: "users",
+              localField: "author",
+              foreignField: "_id",
+              as: "author",
+            },
+          },
+          { $unwind: "$author" },
+          { $sort: { createdAt: -1 } },
+          { $limit: Math.ceil((options.limit || 20) * 0.3) }, // 30% famous users
+        ]),
 
-      // Remove the priority field from final result
-      pipeline.push({
-        $project: {
-          priority: 0,
-        },
-      } as any);
+        // User's own tweets
+        this.aggregate([
+          { $match: { author: userId } },
+          {
+            $lookup: {
+              from: "users",
+              localField: "author",
+              foreignField: "_id",
+              as: "author",
+            },
+          },
+          { $unwind: "$author" },
+          { $sort: { createdAt: -1 } },
+          { $limit: Math.ceil((options.limit || 20) * 0.1) }, // 10% own tweets
+        ]),
+      ]);
 
-      return await this.aggregate(pipeline);
+      // Combine and mix tweets for better user experience
+      const allTweets = [
+        ...followedTweets.map((tweet: any) => ({
+          ...tweet,
+          sourceType: "followed",
+        })),
+        ...famousTweets.map((tweet: any) => ({
+          ...tweet,
+          sourceType: "famous",
+        })),
+        ...ownTweets.map((tweet: any) => ({ ...tweet, sourceType: "own" })),
+      ];
+
+      // Sort by creation time but maintain content diversity
+      const sortedTweets = allTweets.sort((a, b) => {
+        const timeA = new Date(a.createdAt).getTime();
+        const timeB = new Date(b.createdAt).getTime();
+
+        // If tweets are within 30 minutes of each other, prioritize content diversity
+        if (Math.abs(timeA - timeB) < 30 * 60 * 1000) {
+          const priorityOrder = { own: 3, followed: 2, famous: 1 };
+          return (
+            priorityOrder[b.sourceType as keyof typeof priorityOrder] -
+            priorityOrder[a.sourceType as keyof typeof priorityOrder]
+          );
+        }
+
+        return timeB - timeA; // Most recent first
+      });
+
+      // Apply pagination
+      const startIndex = options.skip || 0;
+      const endIndex = startIndex + (options.limit || 20);
+      const paginatedTweets = sortedTweets.slice(startIndex, endIndex);
+
+      // Remove the sourceType field from final result
+      return paginatedTweets.map((tweet) => {
+        const { sourceType, ...cleanTweet } = tweet;
+        return cleanTweet;
+      });
     } catch (error: any) {
       throw new AppError("Failed to get home timeline", 500);
     }
@@ -423,8 +458,38 @@ export class TweetRepository
       );
       const followingIds = followedUsers.map((follow: any) => follow.following);
 
-      // Include the user's own tweets as well
-      const authorIds = [...followingIds, userId];
+      // Get famous users (users with most followers)
+      const famousUsersAgg = await Follow.aggregate([
+        {
+          $group: {
+            _id: "$following",
+            followerCount: { $sum: 1 },
+          },
+        },
+        {
+          $match: {
+            followerCount: { $gte: 10 }, // Users with 10+ followers
+          },
+        },
+        {
+          $sort: { followerCount: -1 },
+        },
+        {
+          $limit: 20, // Top 20 most followed users
+        },
+        {
+          $project: {
+            _id: 1,
+          },
+        },
+      ]);
+
+      const famousUserIds = famousUsersAgg.map((user: any) => user._id);
+
+      // Combine followed users, famous users, and user's own tweets
+      const authorIds = [
+        ...new Set([...followingIds, ...famousUserIds, userId]),
+      ];
 
       const pipeline = [
         {
@@ -740,6 +805,164 @@ export class TweetRepository
       return await this.countDocuments({ hashtags: hashtag });
     } catch (error: any) {
       throw new AppError("Failed to count tweets by hashtag", 500);
+    }
+  }
+
+  /**
+   * Add like to tweet atomically (increment counter)
+   */
+  async addLikeToTweet(
+    tweetId: MongooseObjectId,
+    userId: MongooseObjectId
+  ): Promise<ITweetDocument | null> {
+    try {
+      const result = await this.model
+        .findByIdAndUpdate(
+          tweetId,
+          {
+            $inc: { likesCount: 1 },
+          },
+          {
+            new: true,
+            runValidators: true,
+          }
+        )
+        .populate("author");
+
+      return result;
+    } catch (error: any) {
+      console.error("Error adding like to tweet:", error);
+      throw new AppError("Failed to add like to tweet", 500);
+    }
+  }
+
+  /**
+   * Remove like from tweet atomically (decrement counter)
+   */
+  async removeLikeFromTweet(
+    tweetId: MongooseObjectId,
+    userId: MongooseObjectId
+  ): Promise<ITweetDocument | null> {
+    try {
+      const result = await this.model
+        .findOneAndUpdate(
+          {
+            _id: tweetId,
+            likesCount: { $gt: 0 }, // Only decrement if count > 0
+          },
+          {
+            $inc: { likesCount: -1 },
+          },
+          {
+            new: true,
+            runValidators: true,
+          }
+        )
+        .populate("author");
+
+      return result;
+    } catch (error: any) {
+      console.error("Error removing like from tweet:", error);
+      throw new AppError("Failed to remove like from tweet", 500);
+    }
+  }
+
+  /**
+   * Add retweet to tweet atomically (increment counter)
+   */
+  async addRetweetToTweet(
+    tweetId: MongooseObjectId,
+    userId: MongooseObjectId
+  ): Promise<ITweetDocument | null> {
+    try {
+      const result = await this.model
+        .findByIdAndUpdate(
+          tweetId,
+          {
+            $inc: { retweetsCount: 1 },
+          },
+          {
+            new: true,
+            runValidators: true,
+          }
+        )
+        .populate("author");
+
+      return result;
+    } catch (error: any) {
+      console.error("Error adding retweet to tweet:", error);
+      throw new AppError("Failed to add retweet to tweet", 500);
+    }
+  }
+
+  /**
+   * Remove retweet from tweet atomically (decrement counter)
+   */
+  async removeRetweetFromTweet(
+    tweetId: MongooseObjectId,
+    userId: MongooseObjectId
+  ): Promise<ITweetDocument | null> {
+    try {
+      const result = await this.model
+        .findOneAndUpdate(
+          {
+            _id: tweetId,
+            retweetsCount: { $gt: 0 }, // Only decrement if count > 0
+          },
+          {
+            $inc: { retweetsCount: -1 },
+          },
+          {
+            new: true,
+            runValidators: true,
+          }
+        )
+        .populate("author");
+
+      return result;
+    } catch (error: any) {
+      console.error("Error removing retweet from tweet:", error);
+      throw new AppError("Failed to remove retweet from tweet", 500);
+    }
+  }
+
+  /**
+   * Check if user has liked a tweet (using Like collection)
+   */
+  async hasUserLikedTweet(
+    tweetId: MongooseObjectId,
+    userId: MongooseObjectId
+  ): Promise<boolean> {
+    try {
+      const { default: Like } = await import("../../models/like");
+      const like = await Like.findOne({
+        tweet: tweetId,
+        user: userId,
+      });
+      return like !== null;
+    } catch (error: any) {
+      console.error("Error checking if user has liked tweet:", error);
+      throw new AppError("Failed to check if user has liked tweet", 500);
+    }
+  }
+
+  /**
+   * Check if user has retweeted a tweet (using Retweet collection)
+   */
+  async hasUserRetweetedTweet(
+    tweetId: MongooseObjectId,
+    userId: MongooseObjectId
+  ): Promise<boolean> {
+    try {
+      const { default: Retweet } = await import("../../models/retweet");
+      const retweet = await Retweet.findOne({
+        tweet: tweetId,
+        user: userId,
+      });
+      return retweet !== null;
+    } catch (error: any) {
+      console.error("Error checking if user has retweeted tweet:", error);
+      throw new AppError("Failed to check if user has retweeted tweet", 500);
     }
   }
 }
