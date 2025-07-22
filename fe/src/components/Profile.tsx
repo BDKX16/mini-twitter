@@ -268,7 +268,7 @@ export function Profile({ username }: ProfileProps) {
 
       const response = await userService.updateProfile(editFormData);
 
-      if (response.data && response.data.success) {
+      if (response && response.success) {
         // Actualizar userData local
         setUserData((prev: any) => ({
           ...prev,
