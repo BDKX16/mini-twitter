@@ -70,7 +70,6 @@ export function TweetCard({ tweet, onTweetDeleted }: TweetCardProps) {
       const user = localStorage.getItem("userData");
       if (user) {
         const parsedUser = JSON.parse(user);
-        console.log("Parsed user:", parsedUser);
 
         // Try different possible username fields
         const username =
@@ -495,18 +494,6 @@ export function TweetCard({ tweet, onTweetDeleted }: TweetCardProps) {
             </Button>
           </div>
 
-          {/* Comments Section */}
-          {(() => {
-            console.log(
-              "Rendering comments section - comments:",
-              comments,
-              "length:",
-              comments.length,
-              "isLoadingComments:",
-              isLoadingComments
-            );
-            return null;
-          })()}
           {showComments && (
             <div className="mt-4 border-t border-gray-100 pt-4">
               <h4 className="text-lg font-semibold text-gray-900 mb-3">

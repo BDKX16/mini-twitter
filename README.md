@@ -46,14 +46,20 @@
    npm install
    ```
 
-2. **Instalar dependencias del Frontend**
+2. **Generar datos de prueba (si es nesesario)**
+
+   ```bash
+   npm run seed
+   ```
+
+3. **Instalar dependencias del Frontend**
 
    ```bash
    cd ../fe
    npm install
    ```
 
-3. **Levantar los servidores localmente**
+4. **Levantar los servidores localmente**
    - Para la API:
      ```bash
      npm start
