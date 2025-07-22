@@ -266,7 +266,7 @@ export function TweetCard({ tweet, onTweetDeleted }: TweetCardProps) {
     try {
       setIsLoading(true);
       await tweetService.deleteTweet(tweet.id);
-
+      console.log(tweet.id);
       // Call the callback if provided, otherwise reload the page
       if (onTweetDeleted) {
         onTweetDeleted(tweet.id);
@@ -658,7 +658,14 @@ export function TweetCard({ tweet, onTweetDeleted }: TweetCardProps) {
             <div className="mt-4 border-t border-gray-100 pt-4">
               <div className="flex space-x-3">
                 <img
-                  src={tweet.user.avatar} // En el futuro, obtener del usuario autenticado
+                  src={(() => {
+                    const user = localStorage.getItem("userData");
+                    if (user) {
+                      const parsedUser = JSON.parse(user);
+                      return parsedUser.avatar || "";
+                    }
+                    return "/default-avatar.png";
+                  })()}
                   alt="Your avatar"
                   className="w-8 h-8 rounded-full object-cover"
                 />

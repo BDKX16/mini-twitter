@@ -65,8 +65,10 @@ export interface UserProfile
 export interface SanitizedUser
   extends Omit<
     IUserDocument,
-    "password" | "resetPasswordToken" | "resetPasswordExpires"
-  > {}
+    "password" | "resetPasswordToken" | "resetPasswordExpires" | "address"
+  > {
+  location?: string; // Mapped from address field
+}
 
 // Tweet service interfaces
 export interface CreateTweetData {

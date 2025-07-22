@@ -57,6 +57,12 @@ export class UserService implements IBaseService {
         createdAt: new Date(),
       } as Partial<IUserDocument>;
 
+      // Map location to address for database storage
+      if (userData.location !== undefined) {
+        (createData as any).address = userData.location;
+        delete (createData as any).location;
+      }
+
       console.log("UserService.createUser - createData:", createData);
 
       const user = await this.userRepository.create(createData);
@@ -153,9 +159,16 @@ export class UserService implements IBaseService {
       throw new NotFoundError("User not found");
     }
 
+    // Map location to address for database storage
+    const mappedUpdateData: any = { ...updateData };
+    if (updateData.location !== undefined) {
+      mappedUpdateData.address = updateData.location;
+      delete mappedUpdateData.location;
+    }
+
     const updatedUser = await this.userRepository.updateById(
       userId,
-      updateData
+      mappedUpdateData
     );
     if (!updatedUser) {
       throw new NotFoundError("User not found");
@@ -333,6 +346,12 @@ export class UserService implements IBaseService {
     delete (sanitized as any).resetPasswordToken;
     delete (sanitized as any).resetPasswordExpires;
     delete (sanitized as any).__v;
+
+    // Map address field to location for frontend consistency
+    if ((sanitized as any).address !== undefined) {
+      (sanitized as any).location = (sanitized as any).address;
+      delete (sanitized as any).address;
+    }
 
     return sanitized as SanitizedUser;
   }

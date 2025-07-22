@@ -6,7 +6,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Image, Smile, Calendar, MapPin, X } from "lucide-react";
 import { tweetService } from "@/services/tweetService";
 import { fileService } from "@/services/fileService";
+import { userService } from "@/services/userService";
 import { ApiResponse, Tweet } from "@/types/services";
+
+interface User {
+  id: string;
+  username: string;
+  name: string;
+  avatar?: string;
+  profileImage?: string;
+}
 
 interface TweetComposerProps {
   onTweet?: (tweet: any) => void;
@@ -19,7 +28,14 @@ export function TweetComposer({ onTweet, onError }: TweetComposerProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [userAvatar, setUserAvatar] = useState<string | null>(null);
+  const [showUserSuggestions, setShowUserSuggestions] = useState(false);
+  const [userSuggestions, setUserSuggestions] = useState<User[]>([]);
+  const [currentMentionSearch, setCurrentMentionSearch] = useState("");
+  const [mentionPosition, setMentionPosition] = useState<number>(0);
+  const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
   const maxLength = 280;
 
   // Cargar avatar del usuario desde localStorage
@@ -35,14 +51,157 @@ export function TweetComposer({ onTweet, onError }: TweetComposerProps) {
     }
   }, []);
 
+  // Cerrar sugerencias cuando se hace clic fuera
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        suggestionsRef.current &&
+        !suggestionsRef.current.contains(event.target as Node) &&
+        textareaRef.current &&
+        !textareaRef.current.contains(event.target as Node)
+      ) {
+        setShowUserSuggestions(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  // Función para extraer hashtags del contenido
+  const extractHashtags = (text: string): string[] => {
+    const hashtagRegex = /#[a-zA-Z0-9_]+/g;
+    const matches = text.match(hashtagRegex);
+    return matches ? matches.map((tag) => tag.substring(1)) : []; // Remover el '#' del inicio
+  };
+
+  // Función para extraer menciones del contenido
+  const extractMentions = (text: string): string[] => {
+    const mentionRegex = /@[a-zA-Z0-9_]+/g;
+    const matches = text.match(mentionRegex);
+    return matches ? matches.map((mention) => mention.substring(1)) : []; // Remover el '@' del inicio
+  };
+
+  // Buscar usuarios para autocompletado
+  const searchUsers = async (query: string) => {
+    if (query.length < 2) {
+      setUserSuggestions([]);
+      return;
+    }
+
+    try {
+      const response = await userService.searchUsers(query, { limit: 5 });
+      if (response?.success && response?.data?.users) {
+        setUserSuggestions(response.data.users);
+      }
+    } catch (error) {
+      console.error("Error searching users:", error);
+    }
+  };
+
+  // Manejar cambio de contenido y detectar menciones
+  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newContent = e.target.value;
+    const cursorPosition = e.target.selectionStart;
+
+    setContent(newContent);
+
+    // Detectar si estamos escribiendo una mención
+    const textBeforeCursor = newContent.substring(0, cursorPosition);
+    const lastAtIndex = textBeforeCursor.lastIndexOf("@");
+
+    if (lastAtIndex !== -1) {
+      const textAfterAt = textBeforeCursor.substring(lastAtIndex + 1);
+
+      // Verificar que no hay espacios después del @
+      if (!textAfterAt.includes(" ") && textAfterAt.length >= 0) {
+        setCurrentMentionSearch(textAfterAt);
+        setMentionPosition(lastAtIndex);
+        setShowUserSuggestions(true);
+        setSelectedSuggestionIndex(0);
+
+        // Buscar usuarios solo si hay al menos 1 carácter después del @
+        if (textAfterAt.length > 0) {
+          searchUsers(textAfterAt);
+        } else {
+          setUserSuggestions([]);
+        }
+      } else {
+        setShowUserSuggestions(false);
+      }
+    } else {
+      setShowUserSuggestions(false);
+    }
+  };
+
+  // Seleccionar usuario de las sugerencias
+  const selectUser = (user: User) => {
+    const beforeMention = content.substring(0, mentionPosition);
+    const afterMention = content.substring(
+      mentionPosition + currentMentionSearch.length + 1
+    );
+    const newContent = beforeMention + `@${user.username} ` + afterMention;
+
+    setContent(newContent);
+    setShowUserSuggestions(false);
+    setCurrentMentionSearch("");
+
+    // Enfocar de nuevo el textarea
+    setTimeout(() => {
+      if (textareaRef.current) {
+        const newCursorPosition = mentionPosition + user.username.length + 2;
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(
+          newCursorPosition,
+          newCursorPosition
+        );
+      }
+    }, 0);
+  };
+
+  // Manejar teclas en el textarea
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (showUserSuggestions && userSuggestions.length > 0) {
+      switch (e.key) {
+        case "ArrowDown":
+          e.preventDefault();
+          setSelectedSuggestionIndex((prev) =>
+            prev < userSuggestions.length - 1 ? prev + 1 : 0
+          );
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          setSelectedSuggestionIndex((prev) =>
+            prev > 0 ? prev - 1 : userSuggestions.length - 1
+          );
+          break;
+        case "Enter":
+        case "Tab":
+          e.preventDefault();
+          selectUser(userSuggestions[selectedSuggestionIndex]);
+          break;
+        case "Escape":
+          e.preventDefault();
+          setShowUserSuggestions(false);
+          break;
+      }
+    }
+  };
   const handleSubmit = async () => {
     if (content.trim() && content.length <= maxLength && !isLoading) {
       setIsLoading(true);
 
       try {
+        const hashtags = extractHashtags(content);
+        const mentions = extractMentions(content);
+
         const tweetData = {
           content: content.trim(),
           ...(images.length > 0 && { images }),
+          ...(hashtags.length > 0 && { hashtags }),
+          ...(mentions.length > 0 && { mentions }),
         };
 
         const response = (await tweetService.createTweet(
@@ -154,15 +313,93 @@ export function TweetComposer({ onTweet, onError }: TweetComposerProps) {
         ) : (
           <div className="w-12 h-12 bg-gray-300 rounded-full flex-shrink-0"></div>
         )}
-        <div className="flex-1">
-          <Textarea
-            placeholder="¿Qué está pasando?"
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            className="border-none resize-none text-xl placeholder:text-gray-500 focus-visible:ring-0 p-0"
-            rows={3}
-            disabled={isLoading}
-          />
+        <div className="flex-1 relative">
+          <div className="relative">
+            <Textarea
+              ref={textareaRef}
+              placeholder="¿Qué está pasando?"
+              value={content}
+              onChange={handleContentChange}
+              onKeyDown={handleKeyDown}
+              className="border-none resize-none text-xl placeholder:text-gray-500 focus-visible:ring-0 p-0 bg-transparent relative z-10"
+              rows={3}
+              disabled={isLoading}
+              style={{
+                color: "transparent",
+                caretColor: "#000",
+                WebkitTextFillColor: "transparent",
+              }}
+            />
+
+            {/* Texto resaltado superpuesto */}
+            <div
+              className="absolute top-0 left-0 w-full text-xl whitespace-pre-wrap break-words pointer-events-none z-0"
+              style={{
+                fontFamily: "inherit",
+                fontSize: "1.25rem",
+                lineHeight: "1.5",
+                padding: "0px",
+                minHeight: "4.5rem",
+              }}
+            >
+              {content
+                .split(/(@[a-zA-Z0-9_]+|#[a-zA-Z0-9_]+)/g)
+                .map((part, index) => {
+                  if (part.startsWith("@")) {
+                    return (
+                      <span key={index} className="text-blue-500 font-medium">
+                        {part}
+                      </span>
+                    );
+                  } else if (part.startsWith("#")) {
+                    return (
+                      <span key={index} className="text-blue-500 font-medium">
+                        {part}
+                      </span>
+                    );
+                  }
+                  return (
+                    <span key={index} className="text-gray-900">
+                      {part}
+                    </span>
+                  );
+                })}
+            </div>
+          </div>
+
+          {/* User suggestions dropdown */}
+          {showUserSuggestions && userSuggestions.length > 0 && (
+            <div
+              ref={suggestionsRef}
+              className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 w-64"
+            >
+              {userSuggestions.map((user, index) => (
+                <div
+                  key={user.id}
+                  className={`flex items-center p-3 cursor-pointer hover:bg-gray-50 ${
+                    index === selectedSuggestionIndex ? "bg-blue-50" : ""
+                  }`}
+                  onClick={() => selectUser(user)}
+                >
+                  <img
+                    src={
+                      user.avatar ||
+                      user.profileImage ||
+                      "https://images.pexels.com/photos/771742/pexels-photo-771742.jpeg?auto=compress&cs=tinysrgb&w=400"
+                    }
+                    alt={user.username}
+                    className="w-8 h-8 rounded-full object-cover mr-3"
+                  />
+                  <div>
+                    <div className="font-medium text-gray-900">{user.name}</div>
+                    <div className="text-sm text-gray-500">
+                      @{user.username}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Image previews */}
           {images.length > 0 && (

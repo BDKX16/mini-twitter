@@ -216,6 +216,9 @@ export function RightSidebar() {
                 <div
                   key={`user-${user.id}`}
                   className="hover:bg-gray-100 p-2 rounded cursor-pointer transition-colors"
+                  onClick={() =>
+                    (window.location.href = `/profile/${user.username}`)
+                  }
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
@@ -248,7 +251,10 @@ export function RightSidebar() {
                           ? "bg-white text-[#1DA1F2] border-[#1DA1F2] hover:bg-[#E8F5FD]"
                           : "bg-[#1DA1F2] text-white border-transparent hover:bg-[#1A8CD8]"
                       }`}
-                      onClick={() => handleFollow(user.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleFollow(user.id);
+                      }}
                     >
                       {user.isFollowing ? "Siguiendo" : "Seguir"}
                     </Button>

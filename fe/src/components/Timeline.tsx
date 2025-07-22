@@ -67,7 +67,6 @@ export function Timeline() {
 
       if (response?.success && response?.data?.tweets) {
         const newTweets = response.data.tweets;
-        console.log(response);
         // Formatear tweets para que coincidan con la interfaz esperada
         const formattedTweets: Tweet[] = newTweets.map((tweet: ApiTweet) => ({
           id: tweet._id,
