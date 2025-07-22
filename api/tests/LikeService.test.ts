@@ -18,8 +18,12 @@ describe("LikeService", () => {
   let mockTweetRepository: jest.Mocked<TweetRepository>;
 
   // Datos de prueba hardcodeados
+  const userId = "60d5ecb54f8a2b1234567890" as any;
+  const tweetId = "60d5ecb54f8a2b1234567891" as any;
+  const likeId = "60d5ecb54f8a2b1234567892" as any;
+
   const mockUser: Partial<IUserDocument> = {
-    _id: "60d5ecb54f8a2b1234567890" as any,
+    _id: userId,
     firstName: "Juan",
     lastName: "Pérez",
     username: "juan_perez",
@@ -28,27 +32,24 @@ describe("LikeService", () => {
   };
 
   const mockTweet: Partial<ITweetDocument> = {
-    _id: "60d5ecb54f8a2b1234567891" as any,
+    _id: tweetId,
     content: "Este es un tweet de prueba",
-    author: "60d5ecb54f8a2b1234567890" as any,
+    author: userId,
     createdAt: new Date("2024-01-01"),
-    likes: [],
-    retweets: [],
+    likesCount: 0,
+    retweetsCount: 0,
+    repliesCount: 0,
     mentions: [],
     hashtags: [],
     isDeleted: false,
   };
 
   const mockLike: Partial<ILikeDocument> = {
-    _id: "60d5ecb54f8a2b1234567892" as any,
-    user: "60d5ecb54f8a2b1234567890" as any,
-    tweet: "60d5ecb54f8a2b1234567891" as any,
+    _id: likeId,
+    user: userId,
+    tweet: tweetId,
     createdAt: new Date("2024-01-01"),
   };
-
-  const userId = "60d5ecb54f8a2b1234567890" as any;
-  const tweetId = "60d5ecb54f8a2b1234567891" as any;
-  const likeId = "60d5ecb54f8a2b1234567892" as any;
 
   beforeEach(() => {
     // Reset mocks before each test
@@ -71,11 +72,17 @@ describe("LikeService", () => {
   describe("likeTweet", () => {
     it("should successfully like a tweet", async () => {
       // Arrange
+      const updatedTweet = { ...mockTweet, likesCount: 1 };
       mockUserRepository.findById.mockResolvedValue(mockUser as IUserDocument);
       mockTweetRepository.findById.mockResolvedValue(
         mockTweet as ITweetDocument
       );
-      mockLikeRepository.findByUserAndTweet.mockResolvedValue(null);
+      (mockTweetRepository as any).hasUserLikedTweet = jest
+        .fn()
+        .mockResolvedValue(false);
+      (mockTweetRepository as any).addLikeToTweet = jest
+        .fn()
+        .mockResolvedValue(updatedTweet);
       mockLikeRepository.create.mockResolvedValue(mockLike as ILikeDocument);
 
       // Act
@@ -84,9 +91,12 @@ describe("LikeService", () => {
       // Assert
       expect(mockUserRepository.findById).toHaveBeenCalledWith(userId);
       expect(mockTweetRepository.findById).toHaveBeenCalledWith(tweetId);
-      expect(mockLikeRepository.findByUserAndTweet).toHaveBeenCalledWith(
-        userId,
-        tweetId
+      expect(
+        (mockTweetRepository as any).hasUserLikedTweet
+      ).toHaveBeenCalledWith(tweetId, userId);
+      expect((mockTweetRepository as any).addLikeToTweet).toHaveBeenCalledWith(
+        tweetId,
+        userId
       );
       expect(mockLikeRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -94,7 +104,12 @@ describe("LikeService", () => {
           tweet: tweetId,
         })
       );
-      expect(result).toEqual(mockLike);
+      expect(result).toEqual({
+        tweet: updatedTweet,
+        message: "Tweet liked successfully",
+        likesCount: 1,
+        isLiked: true,
+      });
     });
 
     it("should throw NotFoundError when user does not exist", async () => {
@@ -126,9 +141,9 @@ describe("LikeService", () => {
       mockTweetRepository.findById.mockResolvedValue(
         mockTweet as ITweetDocument
       );
-      mockLikeRepository.findByUserAndTweet.mockResolvedValue(
-        mockLike as ILikeDocument
-      );
+      (mockTweetRepository as any).hasUserLikedTweet = jest
+        .fn()
+        .mockResolvedValue(true);
 
       // Act & Assert
       await expect(likeService.likeTweet(userId, tweetId)).rejects.toThrow(
@@ -140,10 +155,17 @@ describe("LikeService", () => {
   describe("unlikeTweet", () => {
     it("should successfully unlike a tweet", async () => {
       // Arrange
+      const updatedTweet = { ...mockTweet, likesCount: 0 };
       mockUserRepository.findById.mockResolvedValue(mockUser as IUserDocument);
       mockTweetRepository.findById.mockResolvedValue(
         mockTweet as ITweetDocument
       );
+      (mockTweetRepository as any).hasUserLikedTweet = jest
+        .fn()
+        .mockResolvedValue(true);
+      (mockTweetRepository as any).removeLikeFromTweet = jest
+        .fn()
+        .mockResolvedValue(updatedTweet);
       mockLikeRepository.findByUserAndTweet.mockResolvedValue(
         mockLike as ILikeDocument
       );
@@ -153,9 +175,24 @@ describe("LikeService", () => {
       const result = await likeService.unlikeTweet(userId, tweetId);
 
       // Assert
-      expect(mockLikeRepository.deleteById).toHaveBeenCalledWith(mockLike._id);
+      expect(mockUserRepository.findById).toHaveBeenCalledWith(userId);
+      expect(mockTweetRepository.findById).toHaveBeenCalledWith(tweetId);
+      expect(
+        (mockTweetRepository as any).hasUserLikedTweet
+      ).toHaveBeenCalledWith(tweetId, userId);
+      expect(
+        (mockTweetRepository as any).removeLikeFromTweet
+      ).toHaveBeenCalledWith(tweetId, userId);
+      expect(mockLikeRepository.findByUserAndTweet).toHaveBeenCalledWith(
+        userId,
+        tweetId
+      );
+      expect(mockLikeRepository.deleteById).toHaveBeenCalledWith(likeId);
       expect(result).toEqual({
+        tweet: updatedTweet,
         message: "Tweet unliked successfully",
+        likesCount: 0,
+        isLiked: false,
       });
     });
 
@@ -165,56 +202,14 @@ describe("LikeService", () => {
       mockTweetRepository.findById.mockResolvedValue(
         mockTweet as ITweetDocument
       );
-      mockLikeRepository.findByUserAndTweet.mockResolvedValue(null);
+      (mockTweetRepository as any).hasUserLikedTweet = jest
+        .fn()
+        .mockResolvedValue(false);
 
       // Act & Assert
       await expect(likeService.unlikeTweet(userId, tweetId)).rejects.toThrow(
         NotFoundError
       );
-    });
-  });
-
-  describe("toggleLike", () => {
-    it("should like tweet when not already liked", async () => {
-      // Arrange
-      mockUserRepository.findById.mockResolvedValue(mockUser as IUserDocument);
-      mockTweetRepository.findById.mockResolvedValue(
-        mockTweet as ITweetDocument
-      );
-      mockLikeRepository.toggleLike.mockResolvedValue({
-        action: "liked",
-        like: mockLike as ILikeDocument,
-      });
-
-      // Act
-      const result = await likeService.toggleLike(userId, tweetId);
-
-      // Assert
-      expect(mockLikeRepository.toggleLike).toHaveBeenCalledWith(
-        userId,
-        tweetId
-      );
-      expect(result.action).toBe("liked");
-      expect(result.like).toEqual(mockLike);
-    });
-
-    it("should unlike tweet when already liked", async () => {
-      // Arrange
-      mockUserRepository.findById.mockResolvedValue(mockUser as IUserDocument);
-      mockTweetRepository.findById.mockResolvedValue(
-        mockTweet as ITweetDocument
-      );
-      mockLikeRepository.toggleLike.mockResolvedValue({
-        action: "unliked",
-        like: null,
-      });
-
-      // Act
-      const result = await likeService.toggleLike(userId, tweetId);
-
-      // Assert
-      expect(result.action).toBe("unliked");
-      expect(result.like).toBeNull();
     });
   });
 

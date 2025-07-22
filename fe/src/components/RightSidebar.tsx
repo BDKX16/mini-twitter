@@ -55,8 +55,12 @@ export function RightSidebar() {
         limit: 5,
       })) as unknown as ApiResponse<{ hashtags: TrendingTopic[] }>;
 
-      if (response?.success && response?.data?.hashtags) {
-        setTrendingTopics(response.data.hashtags);
+      // Corregir el acceso a los datos: response.data.data.hashtags
+      const hashtags =
+        response?.data?.data?.hashtags || response?.data?.hashtags;
+
+      if (response?.success && hashtags && hashtags.length > 0) {
+        setTrendingTopics(hashtags);
       } else {
         // Fallback a datos mock si no hay datos de la API
         setTrendingTopics([
@@ -68,15 +72,8 @@ export function RightSidebar() {
         ]);
       }
     } catch (error) {
-      console.error("Error loading trending topics:", error);
       // Usar datos mock como fallback en caso de error
-      setTrendingTopics([
-        { hashtag: "#NextJS", count: 125000, category: "Tecnología" },
-        { hashtag: "#React", count: 89000, category: "Programación" },
-        { hashtag: "#OpenAI", count: 234000, category: "IA" },
-        { hashtag: "#JavaScript", count: 156000, category: "Programación" },
-        { hashtag: "#TypeScript", count: 78000, category: "Programación" },
-      ]);
+      setTrendingTopics([]);
     }
   };
 

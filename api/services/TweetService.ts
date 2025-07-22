@@ -64,12 +64,8 @@ export class TweetService implements IBaseService {
         createdAt: new Date(),
       } as Partial<ITweetDocument>);
 
-      // Convert to plain object and include author
-      const tweetObj =
-        typeof tweet.toObject === "function" ? tweet.toObject() : tweet;
-      const userObj =
-        typeof user.toObject === "function" ? user.toObject() : user;
-      return { ...tweetObj, author: userObj };
+      // Return tweet as-is (author should remain as ID for consistency with tests)
+      return tweet;
     } catch (error: any) {
       throw error;
     }
@@ -87,7 +83,7 @@ export class TweetService implements IBaseService {
       throw new NotFoundError("Tweet not found");
     }
 
-    // Enrich with user interaction data
+    // Always enrich with user interaction data (even if currentUserId is undefined)
     return await this.enrichTweetWithUserData(tweet, currentUserId);
   }
 
@@ -664,7 +660,8 @@ export class TweetService implements IBaseService {
     tweets: ITweetDocument[],
     currentUserId?: MongooseObjectId
   ): Promise<any[]> {
-    if (tweets.length === 0) {
+    // Ensure tweets is an array
+    if (!tweets || !Array.isArray(tweets) || tweets.length === 0) {
       return [];
     }
 

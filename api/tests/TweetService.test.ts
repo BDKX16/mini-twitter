@@ -45,12 +45,19 @@ describe("TweetService", () => {
     _id: mockTweetId as any,
     content: "Este es un tweet de prueba",
     author: mockAuthorId as any,
-    likes: [],
-    retweets: [],
+    likesCount: 0,
+    retweetsCount: 0,
+    repliesCount: 0,
     mentions: [],
     hashtags: ["test"],
     isDeleted: false,
     createdAt: new Date("2024-01-01"),
+  };
+
+  const mockTweetWithInteraction = {
+    ...mockTweet,
+    isLiked: false,
+    isRetweeted: false,
   };
 
   const validCreateTweetData: CreateTweetData = {
@@ -146,12 +153,21 @@ describe("TweetService", () => {
         mockTweet as ITweetDocument
       );
 
+      // Mock the dependencies for enrichTweetsWithUserData
+      mockTweetRepository.aggregate = jest.fn().mockResolvedValue([]);
+      (tweetService as any).likeRepository = {
+        find: jest.fn().mockResolvedValue([]),
+      };
+      (tweetService as any).retweetRepository = {
+        find: jest.fn().mockResolvedValue([]),
+      };
+
       // Act
       const result = await tweetService.getTweetById(mockTweetId as any);
 
       // Assert
       expect(mockTweetRepository.findById).toHaveBeenCalledWith(mockTweetId);
-      expect(result).toEqual(mockTweet);
+      expect(result).toEqual(mockTweetWithInteraction);
     });
 
     it("should throw NotFoundError if tweet not found", async () => {
@@ -172,19 +188,28 @@ describe("TweetService", () => {
       // Arrange
       const mockTweets = [mockTweet] as ITweetDocument[];
       mockUserRepository.findById.mockResolvedValue(mockUser as IUserDocument);
-      mockTweetRepository.findByAuthor.mockResolvedValue(mockTweets);
+      mockTweetRepository.find.mockResolvedValue(mockTweets);
+
+      // Mock the dependencies for enrichTweetsWithUserData
+      mockTweetRepository.aggregate = jest.fn().mockResolvedValue([]);
+      (tweetService as any).likeRepository = {
+        find: jest.fn().mockResolvedValue([]),
+      };
+      (tweetService as any).retweetRepository = {
+        find: jest.fn().mockResolvedValue([]),
+      };
 
       // Act
       const result = await tweetService.getTweetsByUser(mockUserId as any);
 
       // Assert
       expect(mockUserRepository.findById).toHaveBeenCalledWith(mockUserId);
-      expect(mockTweetRepository.findByAuthor).toHaveBeenCalledWith(
-        mockUserId,
-        { limit: 20, skip: 0 }
+      expect(mockTweetRepository.find).toHaveBeenCalledWith(
+        { author: mockUserId, parentTweetId: null },
+        { limit: 20, skip: 0, sort: { createdAt: -1 } }
       );
       expect(result).toHaveLength(1);
-      expect(result[0]).toEqual(mockTweet);
+      expect(result[0]).toEqual(mockTweetWithInteraction);
     });
 
     it("should throw NotFoundError if user not found", async () => {
@@ -197,7 +222,7 @@ describe("TweetService", () => {
       ).rejects.toThrow(NotFoundError);
 
       expect(mockUserRepository.findById).toHaveBeenCalledWith(mockUserId);
-      expect(mockTweetRepository.findByAuthor).not.toHaveBeenCalled();
+      expect(mockTweetRepository.find).not.toHaveBeenCalled();
     });
   });
 
@@ -329,12 +354,21 @@ describe("TweetService", () => {
       const mockTweets = [mockTweet] as ITweetDocument[];
       mockTweetRepository.find.mockResolvedValue(mockTweets);
 
+      // Mock the dependencies for enrichTweetsWithUserData
+      mockTweetRepository.aggregate = jest.fn().mockResolvedValue([]);
+      (tweetService as any).likeRepository = {
+        find: jest.fn().mockResolvedValue([]),
+      };
+      (tweetService as any).retweetRepository = {
+        find: jest.fn().mockResolvedValue([]),
+      };
+
       // Act
       const result = await tweetService.getAllTweets();
 
       // Assert
       expect(mockTweetRepository.find).toHaveBeenCalledWith(
-        {},
+        { parentTweetId: { $exists: false } },
         {
           sort: { createdAt: -1 },
           limit: 50,
@@ -342,7 +376,7 @@ describe("TweetService", () => {
         }
       );
       expect(result).toHaveLength(1);
-      expect(result[0]).toEqual(mockTweet);
+      expect(result[0]).toEqual(mockTweetWithInteraction);
     });
 
     it("should return tweets with custom options", async () => {
@@ -351,19 +385,28 @@ describe("TweetService", () => {
       const options = { limit: 10, skip: 5 };
       mockTweetRepository.find.mockResolvedValue(mockTweets);
 
+      // Mock the dependencies for enrichTweetsWithUserData
+      mockTweetRepository.aggregate = jest.fn().mockResolvedValue([]);
+      (tweetService as any).likeRepository = {
+        find: jest.fn().mockResolvedValue([]),
+      };
+      (tweetService as any).retweetRepository = {
+        find: jest.fn().mockResolvedValue([]),
+      };
+
       // Act
-      const result = await tweetService.getAllTweets(options);
+      const result = await tweetService.getAllTweets(undefined, options);
 
       // Assert
       expect(mockTweetRepository.find).toHaveBeenCalledWith(
-        {},
+        { parentTweetId: { $exists: false } },
         {
           sort: { createdAt: -1 },
           limit: 10,
           skip: 5,
         }
       );
-      expect(result).toEqual(mockTweets);
+      expect(result).toEqual([mockTweetWithInteraction]);
     });
   });
 
@@ -372,15 +415,22 @@ describe("TweetService", () => {
       // Arrange
       const searchQuery = "prueba";
       const mockTweets = [mockTweet] as ITweetDocument[];
-      mockTweetRepository.searchByContent.mockResolvedValue(mockTweets);
+      mockTweetRepository.find.mockResolvedValue(mockTweets);
 
       // Act
       const result = await tweetService.searchTweets(searchQuery);
 
       // Assert
-      expect(mockTweetRepository.searchByContent).toHaveBeenCalledWith(
-        searchQuery,
-        { limit: 20, skip: 0 }
+      expect(mockTweetRepository.find).toHaveBeenCalledWith(
+        {
+          content: { $regex: searchQuery, $options: "i" },
+          parentTweetId: { $exists: false },
+        },
+        {
+          limit: 20,
+          skip: 0,
+          sort: { createdAt: -1 },
+        }
       );
       expect(result).toHaveLength(1);
       expect(result[0]).toEqual(mockTweet);
@@ -389,15 +439,22 @@ describe("TweetService", () => {
     it("should return empty array if no tweets found", async () => {
       // Arrange
       const searchQuery = "nonexistent";
-      mockTweetRepository.searchByContent.mockResolvedValue([]);
+      mockTweetRepository.find.mockResolvedValue([]);
 
       // Act
       const result = await tweetService.searchTweets(searchQuery);
 
       // Assert
-      expect(mockTweetRepository.searchByContent).toHaveBeenCalledWith(
-        searchQuery,
-        { limit: 20, skip: 0 }
+      expect(mockTweetRepository.find).toHaveBeenCalledWith(
+        {
+          content: { $regex: searchQuery, $options: "i" },
+          parentTweetId: { $exists: false },
+        },
+        {
+          limit: 20,
+          skip: 0,
+          sort: { createdAt: -1 },
+        }
       );
       expect(result).toEqual([]);
     });
