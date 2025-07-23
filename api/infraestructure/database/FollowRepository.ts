@@ -1,6 +1,6 @@
 /**
  * Follow Repository Implementation in TypeScript
- * Specific repository for Follow domain operations
+ * Specific repository for Follow domain operations with Redis caching
  */
 
 import { BaseRepository } from "./BaseRepository";
@@ -8,6 +8,7 @@ import { Follow } from "../../models";
 import { IFollowRepository, BaseQueryOptions } from "../../types/repositories";
 import { MongooseObjectId, IFollowDocument } from "../../types/models";
 import { AppError, NotFoundError } from "../../utils/errors";
+import redisManager, { redisConfig, cachePatterns } from "../../config/redis";
 
 export class FollowRepository
   extends BaseRepository<IFollowDocument>
@@ -18,84 +19,266 @@ export class FollowRepository
   }
 
   /**
-   * Find followers of a user
+   * Create follow relationship with cache invalidation (Write-through pattern)
+   */
+  async create(data: Partial<IFollowDocument>): Promise<IFollowDocument> {
+    try {
+      // 1. Create in database
+      const follow = await super.create(data);
+
+      // 2. Invalidate related caches immediately
+      const followerId = data.follower!.toString();
+      const followingId = data.following!.toString();
+
+      await Promise.all([
+        // Invalidate follow relationship cache
+        redisManager.del(
+          cachePatterns.FOLLOW_RELATIONSHIP(followerId, followingId)
+        ),
+        // Invalidate followers and following lists
+        redisManager.del([
+          cachePatterns.FOLLOWERS(followingId),
+          cachePatterns.FOLLOWING(followerId),
+        ]),
+        // Invalidate follow stats for both users
+        redisManager.del([
+          cachePatterns.FOLLOW_STATS(followerId),
+          cachePatterns.FOLLOW_STATS(followingId),
+        ]),
+        // Invalidate timelines (new follow affects timeline)
+        redisManager.del(cachePatterns.TIMELINE(followerId)),
+      ]);
+
+      return follow;
+    } catch (error: any) {
+      console.error("Error in FollowRepository.create:", error);
+      return await super.create(data);
+    }
+  }
+
+  /**
+   * Delete follow relationship with cache invalidation
+   */
+  async deleteById(id: MongooseObjectId): Promise<boolean> {
+    try {
+      // Get follow relationship first for cache invalidation
+      const follow = await super.findById(id);
+
+      // Delete from database
+      const deleted = await super.deleteById(id);
+
+      if (deleted && follow) {
+        const followerId = follow.follower.toString();
+        const followingId = follow.following.toString();
+
+        // Invalidate all related caches
+        await Promise.all([
+          redisManager.del(
+            cachePatterns.FOLLOW_RELATIONSHIP(followerId, followingId)
+          ),
+          redisManager.del([
+            cachePatterns.FOLLOWERS(followingId),
+            cachePatterns.FOLLOWING(followerId),
+            cachePatterns.FOLLOW_STATS(followerId),
+            cachePatterns.FOLLOW_STATS(followingId),
+          ]),
+          redisManager.del(cachePatterns.TIMELINE(followerId)),
+        ]);
+      }
+
+      return deleted;
+    } catch (error: any) {
+      console.error("Error in FollowRepository.deleteById:", error);
+      return await super.deleteById(id);
+    }
+  }
+
+  /**
+   * Find followers of a user with Redis caching
    */
   async findFollowers(
     userId: MongooseObjectId,
     options: BaseQueryOptions = {}
   ): Promise<IFollowDocument[]> {
     try {
+      const cacheKey = `${cachePatterns.FOLLOWERS(
+        userId.toString()
+      )}:${JSON.stringify(options)}`;
+
+      // Try to get from cache first
+      const cached = await redisManager.get<IFollowDocument[]>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      // Get from database
+      const filter = { following: userId };
+      const followers = await this.find(filter, {
+        populate: "follower",
+        sort: { createdAt: -1 },
+        ...options,
+      });
+
+      // Cache the result
+      await redisManager.set(cacheKey, followers, redisConfig.FOLLOW_CACHE_TTL);
+
+      return followers;
+    } catch (error: any) {
+      console.error("Error in FollowRepository.findFollowers:", error);
+      // Fallback to database
       const filter = { following: userId };
       return await this.find(filter, {
         populate: "follower",
         sort: { createdAt: -1 },
         ...options,
       });
-    } catch (error: any) {
-      throw new AppError("Failed to find followers", 500);
     }
   }
 
   /**
-   * Find users that a user is following
+   * Find users that a user is following with Redis caching
    */
   async findFollowing(
     userId: MongooseObjectId,
     options: BaseQueryOptions = {}
   ): Promise<IFollowDocument[]> {
     try {
+      const cacheKey = `${cachePatterns.FOLLOWING(
+        userId.toString()
+      )}:${JSON.stringify(options)}`;
+
+      // Try to get from cache first
+      const cached = await redisManager.get<IFollowDocument[]>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      // Get from database
+      const filter = { follower: userId };
+      const following = await this.find(filter, {
+        populate: "following",
+        sort: { createdAt: -1 },
+        ...options,
+      });
+
+      // Cache the result
+      await redisManager.set(cacheKey, following, redisConfig.FOLLOW_CACHE_TTL);
+
+      return following;
+    } catch (error: any) {
+      console.error("Error in FollowRepository.findFollowing:", error);
+      // Fallback to database
       const filter = { follower: userId };
       return await this.find(filter, {
         populate: "following",
         sort: { createdAt: -1 },
         ...options,
       });
-    } catch (error: any) {
-      throw new AppError("Failed to find following", 500);
     }
   }
 
   /**
-   * Find follow relationship between two users
+   * Find follow relationship between two users with Redis caching
    */
   async findByFollowerAndFollowing(
     followerId: MongooseObjectId,
     followingId: MongooseObjectId
   ): Promise<IFollowDocument | null> {
     try {
+      const cacheKey = cachePatterns.FOLLOW_RELATIONSHIP(
+        followerId.toString(),
+        followingId.toString()
+      );
+
+      // Try to get from cache first
+      const cached = await redisManager.get<IFollowDocument | null>(cacheKey);
+      if (cached !== undefined) {
+        return cached;
+      }
+
+      // Get from database
+      const filter = { follower: followerId, following: followingId };
+      const follow = await this.findOne(filter);
+
+      // Cache the result
+      await redisManager.set(cacheKey, follow, redisConfig.FOLLOW_CACHE_TTL);
+
+      return follow;
+    } catch (error: any) {
+      console.error(
+        "Error in FollowRepository.findByFollowerAndFollowing:",
+        error
+      );
+      // Fallback to database
       const filter = { follower: followerId, following: followingId };
       return await this.findOne(filter);
-    } catch (error: any) {
-      throw new AppError("Failed to find follow relationship", 500);
     }
   }
 
   /**
-   * Count followers of a user
+   * Count followers of a user with Redis caching
    */
   async countFollowers(userId: MongooseObjectId): Promise<number> {
     try {
+      const cacheKey = `${cachePatterns.FOLLOW_STATS(
+        userId.toString()
+      )}:followers`;
+
+      // Try to get from cache first
+      const cached = await redisManager.get<number>(cacheKey);
+      if (cached !== null) {
+        return cached;
+      }
+
+      // Get from database
+      const filter = { following: userId };
+      const count = await this.count(filter);
+
+      // Cache the result
+      await redisManager.set(cacheKey, count, redisConfig.FOLLOW_CACHE_TTL);
+
+      return count;
+    } catch (error: any) {
+      console.error("Error in FollowRepository.countFollowers:", error);
+      // Fallback to database
       const filter = { following: userId };
       return await this.count(filter);
-    } catch (error: any) {
-      throw new AppError("Failed to count followers", 500);
     }
   }
 
   /**
-   * Count users that a user is following
+   * Count users that a user is following with Redis caching
    */
   async countFollowing(userId: MongooseObjectId): Promise<number> {
     try {
+      const cacheKey = `${cachePatterns.FOLLOW_STATS(
+        userId.toString()
+      )}:following`;
+
+      // Try to get from cache first
+      const cached = await redisManager.get<number>(cacheKey);
+      if (cached !== null) {
+        return cached;
+      }
+
+      // Get from database
+      const filter = { follower: userId };
+      const count = await this.count(filter);
+
+      // Cache the result
+      await redisManager.set(cacheKey, count, redisConfig.FOLLOW_CACHE_TTL);
+
+      return count;
+    } catch (error: any) {
+      console.error("Error in FollowRepository.countFollowing:", error);
+      // Fallback to database
       const filter = { follower: userId };
       return await this.count(filter);
-    } catch (error: any) {
-      throw new AppError("Failed to count following", 500);
     }
   }
 
   /**
-   * Check if a user is following another user
+   * Check if a user is following another user with Redis caching
    */
   async isFollowing(
     followerId: MongooseObjectId,
@@ -106,9 +289,13 @@ export class FollowRepository
         followerId,
         followingId
       );
-      return follow !== null;
+      return !!follow;
     } catch (error: any) {
-      throw new AppError("Failed to check if following", 500);
+      console.error("Error in FollowRepository.isFollowing:", error);
+      // Direct fallback to database query
+      const filter = { follower: followerId, following: followingId };
+      const follow = await this.findOne(filter);
+      return !!follow;
     }
   }
 

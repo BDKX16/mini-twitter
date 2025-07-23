@@ -314,19 +314,22 @@ export default function Home() {
    */
   const uploadImage = async (imageData: string): Promise<string> => {
     try {
-      const response = await fetch(`${API_BASE_URL}/upload/profile-image`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          imageData,
-          filename: `profile-${Date.now()}.jpg`,
-        }),
-      });
+      const response = await fetch(
+        `${API_BASE_URL}/upload/registration-image`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            imageData,
+            filename: `profile-${Date.now()}.jpg`,
+          }),
+        }
+      );
 
       const result = await response.json();
-
+      console.log(result);
       if (!response.ok) {
         throw new Error(result.message || "Error uploading image");
       }

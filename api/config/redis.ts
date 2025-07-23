@@ -5,6 +5,49 @@
 
 import { createClient, RedisClientType } from "redis";
 
+// TTL Configuration
+export const redisConfig = {
+  // TTL por tipo de dato
+  USER_CACHE_TTL: 3600, // 1 hora - usuarios cambian poco
+  TWEET_CACHE_TTL: 1800, // 30 min - tweets cambian más
+  TIMELINE_CACHE_TTL: 300, // 5 min - timelines cambian frecuentemente
+  TRENDING_CACHE_TTL: 600, // 10 min - trending actualizado periódicamente
+  FOLLOW_CACHE_TTL: 1800, // 30 min - relaciones cambian poco
+  LIKE_STATE_TTL: 3600, // 1 hora - estados de like/retweet
+};
+
+// Cache key patterns
+export const cachePatterns = {
+  USER: (userId: string) => `user:${userId}`,
+  USER_USERNAME: (username: string) => `user:username:${username}`,
+  USER_STATS: (userId: string) => `user:stats:${userId}`,
+  USER_SUGGESTIONS: (userId: string) => `user:suggestions:${userId}`,
+  USER_LIKES: (userId: string) => `user:likes:${userId}`,
+  USER_RETWEETS: (userId: string) => `user:retweets:${userId}`,
+
+  TWEET: (tweetId: string) => `tweet:${tweetId}`,
+  TWEET_LIKES_COUNT: (tweetId: string) => `tweet:likes:count:${tweetId}`,
+  TWEET_RETWEETS_COUNT: (tweetId: string) => `tweet:retweets:count:${tweetId}`,
+  TWEETS_BY_USER: (userId: string) => `tweets:user:${userId}`,
+
+  TIMELINE: (userId: string) => `timeline:${userId}`,
+  TIMELINE_PUBLIC: "timeline:public",
+  TRENDING_HASHTAGS: "trending:hashtags",
+  TRENDING_TWEETS: "trending:tweets",
+
+  FOLLOW_RELATIONSHIP: (followerId: string, followingId: string) =>
+    `follow:${followerId}:${followingId}`,
+  FOLLOW_STATS: (userId: string) => `follow:stats:${userId}`,
+  FOLLOWERS: (userId: string) => `followers:${userId}`,
+  FOLLOWING: (userId: string) => `following:${userId}`,
+
+  LIKE_STATE: (userId: string, tweetId: string) => `like:${userId}:${tweetId}`,
+  RETWEET_STATE: (userId: string, tweetId: string) =>
+    `retweet:${userId}:${tweetId}`,
+  MOST_LIKED_TWEETS: "most:liked:tweets",
+  MOST_RETWEETED_TWEETS: "most:retweeted:tweets",
+};
+
 // Environment variables interface
 interface RedisEnvVars {
   REDIS_HOST?: string;
@@ -178,6 +221,43 @@ class RedisConfig {
       return true;
     } catch (error) {
       console.error("Redis DEL error:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Delete multiple keys from Redis
+   */
+  public async del(keys: string | string[]): Promise<boolean> {
+    if (!this._isConnected || !this.client) return false;
+    try {
+      if (typeof keys === "string") {
+        await this.client.del(keys);
+      } else {
+        if (keys.length > 0) {
+          await this.client.del(keys);
+        }
+      }
+      return true;
+    } catch (error) {
+      console.error("Redis DEL multiple error:", error);
+      return false;
+    }
+  }
+
+  /**
+   * Delete keys matching a pattern
+   */
+  public async deleteByPattern(pattern: string): Promise<boolean> {
+    if (!this._isConnected || !this.client) return false;
+    try {
+      const keys = await this.client.keys(pattern);
+      if (keys.length > 0) {
+        await this.client.del(keys);
+      }
+      return true;
+    } catch (error) {
+      console.error("Redis DELETE BY PATTERN error:", error);
       return false;
     }
   }

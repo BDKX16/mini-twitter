@@ -1,6 +1,6 @@
 /**
  * User Repository Implementation in TypeScript
- * Specific repository for User domain operations
+ * Specific repository for User domain operations with Redis caching
  */
 
 import { BaseRepository } from "./BaseRepository";
@@ -8,6 +8,7 @@ import { User } from "../../models";
 import { IUserRepository, BaseQueryOptions } from "../../types/repositories";
 import { MongooseObjectId, IUserDocument } from "../../types/models";
 import { AppError, NotFoundError } from "../../utils/errors";
+import redisManager, { redisConfig, cachePatterns } from "../../config/redis";
 
 export class UserRepository
   extends BaseRepository<IUserDocument>
@@ -18,13 +19,144 @@ export class UserRepository
   }
 
   /**
-   * Find user by username
+   * Find user by ID with Redis caching (Cache-Aside pattern)
+   */
+  async findById(id: MongooseObjectId): Promise<IUserDocument | null> {
+    try {
+      const cacheKey = cachePatterns.USER(id.toString());
+
+      // 1. Try to get from Redis cache first
+      const cached = await redisManager.get<IUserDocument>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      // 2. If not in cache, get from database
+      const user = await super.findById(id);
+
+      // 3. Cache the result if found
+      if (user) {
+        await redisManager.set(cacheKey, user, redisConfig.USER_CACHE_TTL);
+      }
+
+      return user;
+    } catch (error: any) {
+      console.error("Error in UserRepository.findById:", error);
+      // Fallback to database if Redis fails
+      return await super.findById(id);
+    }
+  }
+
+  /**
+   * Find user by username with Redis caching (Cache-Aside pattern)
    */
   async findByUsername(username: string): Promise<IUserDocument | null> {
     try {
-      return await this.findOne({ username: username });
+      const cacheKey = cachePatterns.USER_USERNAME(username);
+
+      // 1. Try to get from Redis cache first
+      const cached = await redisManager.get<IUserDocument>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      // 2. If not in cache, get from database
+      const user = await this.findOne({ username: username });
+
+      // 3. Cache the result if found
+      if (user) {
+        await redisManager.set(cacheKey, user, redisConfig.USER_CACHE_TTL);
+        // Also cache by ID for consistency
+        await redisManager.set(
+          cachePatterns.USER(user._id!.toString()),
+          user,
+          redisConfig.USER_CACHE_TTL
+        );
+      }
+
+      return user;
     } catch (error: any) {
-      throw new AppError("Failed to find user by username", 500);
+      console.error("Error in UserRepository.findByUsername:", error);
+      // Fallback to database if Redis fails
+      return await this.findOne({ username: username });
+    }
+  }
+
+  /**
+   * Update user with cache invalidation (Write-through pattern)
+   */
+  async updateById(
+    id: MongooseObjectId,
+    data: Partial<IUserDocument>
+  ): Promise<IUserDocument | null> {
+    try {
+      // 1. Update in database first
+      const updatedUser = await super.updateById(id, data);
+
+      if (updatedUser) {
+        // 2. Update cache immediately (Write-through)
+        const userCacheKey = cachePatterns.USER(id.toString());
+        const usernameCacheKey = cachePatterns.USER_USERNAME(
+          updatedUser.username
+        );
+
+        await Promise.all([
+          redisManager.set(
+            userCacheKey,
+            updatedUser,
+            redisConfig.USER_CACHE_TTL
+          ),
+          redisManager.set(
+            usernameCacheKey,
+            updatedUser,
+            redisConfig.USER_CACHE_TTL
+          ),
+          // Invalidate related caches
+          redisManager.del([
+            cachePatterns.USER_STATS(id.toString()),
+            cachePatterns.USER_SUGGESTIONS("*"), // Invalidate all user suggestions
+          ]),
+        ]);
+      }
+
+      return updatedUser;
+    } catch (error: any) {
+      console.error("Error in UserRepository.updateById:", error);
+      // Fallback to database operation
+      return await super.updateById(id, data);
+    }
+  }
+
+  /**
+   * Delete user with cache invalidation
+   */
+  async deleteById(id: MongooseObjectId): Promise<boolean> {
+    try {
+      // Get user first to get username for cache invalidation
+      const user = await this.findById(id);
+
+      // Delete from database
+      const deleted = await super.deleteById(id);
+
+      if (deleted && user) {
+        // Invalidate all related caches
+        await Promise.all([
+          redisManager.del([
+            cachePatterns.USER(id.toString()),
+            cachePatterns.USER_USERNAME(user.username),
+            cachePatterns.USER_STATS(id.toString()),
+          ]),
+          redisManager.deleteByPattern(
+            `${cachePatterns.USER_SUGGESTIONS("*")}`
+          ),
+          redisManager.deleteByPattern(`${cachePatterns.TIMELINE("*")}`), // User deletion affects timelines
+        ]);
+      }
+
+      return deleted;
+    } catch (error: any) {
+      console.error("Error in UserRepository.deleteById:", error);
+      return await super.deleteById(id);
     }
   }
 
@@ -79,62 +211,36 @@ export class UserRepository
   }
 
   /**
-   * Get user statistics
+   * Get user statistics with Redis caching
    */
   async getUserStats(userId?: MongooseObjectId): Promise<any> {
     try {
       if (userId) {
-        // Individual user stats
+        const cacheKey = cachePatterns.USER_STATS(userId.toString());
+
+        // Try to get from cache first
+        const cached = await redisManager.get(cacheKey);
+        if (cached) {
+          return cached;
+        }
+
+        // Get from database
         const user = await this.findById(userId);
         if (!user) {
           throw new NotFoundError("User not found");
         }
 
-        // Could include follower count, tweet count, etc.
-        return {
+        const stats = {
           userId,
           username: user.username,
           confirmed: user.confirmed,
           createdAt: user.createdAt,
         };
+
+        // Cache the stats
+        await redisManager.set(cacheKey, stats, redisConfig.USER_CACHE_TTL);
+        return stats;
       }
-
-      // General user statistics
-      const pipeline = [
-        {
-          $group: {
-            _id: null,
-            totalUsers: { $sum: 1 },
-            confirmedUsers: {
-              $sum: { $cond: [{ $eq: ["$confirmed", true] }, 1, 0] },
-            },
-            unconfirmedUsers: {
-              $sum: { $cond: [{ $eq: ["$confirmed", false] }, 1, 0] },
-            },
-          },
-        },
-        {
-          $project: {
-            _id: 0,
-            totalUsers: 1,
-            confirmedUsers: 1,
-            unconfirmedUsers: 1,
-            confirmationRate: {
-              $multiply: [{ $divide: ["$confirmedUsers", "$totalUsers"] }, 100],
-            },
-          },
-        },
-      ];
-
-      const result = await this.aggregate(pipeline);
-      return (
-        result[0] || {
-          totalUsers: 0,
-          confirmedUsers: 0,
-          unconfirmedUsers: 0,
-          confirmationRate: 0,
-        }
-      );
     } catch (error: any) {
       if (error instanceof NotFoundError) {
         throw error;
@@ -174,7 +280,7 @@ export class UserRepository
   ): Promise<IUserDocument | null> {
     try {
       return await this.updateById(userId, {
-        lastAccess: new Date(),
+        // lastAccess: new Date(), // Campo no existe en el modelo
       });
     } catch (error: any) {
       throw new AppError("Failed to update last access", 500);
@@ -188,7 +294,7 @@ export class UserRepository
     try {
       return await this.updateById(userId, {
         confirmed: true,
-        confirmedAt: new Date(),
+        // confirmedAt: new Date(), // Campo no existe en el modelo
       });
     } catch (error: any) {
       throw new AppError("Failed to confirm user", 500);
@@ -296,9 +402,7 @@ export class UserRepository
     limit: number = 10
   ): Promise<IUserDocument[]> {
     try {
-      const user = await this.findById(userId, {
-        select: "firstName lastName",
-      });
+      const user = await this.findById(userId);
       if (!user || !user.firstName) {
         return [];
       }

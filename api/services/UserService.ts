@@ -283,7 +283,7 @@ export class UserService implements IBaseService {
 
     const updatedUser = await this.userRepository.updateById(userId, {
       confirmed: true,
-      confirmedAt: new Date(),
+      // confirmedAt: new Date(), // Campo no existe en el modelo
     });
 
     if (!updatedUser) {

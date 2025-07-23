@@ -1,6 +1,6 @@
 /**
  * Tweet Repository Implementation in TypeScript
- * Specific repository for Tweet domain operations
+ * Specific repository for Tweet domain operations with Redis caching
  */
 
 import { BaseRepository } from "./BaseRepository";
@@ -8,6 +8,7 @@ import { Tweet, Follow } from "../../models";
 import { ITweetRepository, BaseQueryOptions } from "../../types/repositories";
 import { MongooseObjectId, ITweetDocument } from "../../types/models";
 import { AppError, NotFoundError } from "../../utils/errors";
+import redisManager, { redisConfig, cachePatterns } from "../../config/redis";
 
 export class TweetRepository
   extends BaseRepository<ITweetDocument>
@@ -18,32 +19,218 @@ export class TweetRepository
   }
 
   /**
-   * Find tweets by author
+   * Find tweet by ID with Redis caching (Cache-Aside pattern)
+   */
+  async findById(id: MongooseObjectId): Promise<ITweetDocument | null> {
+    try {
+      const cacheKey = cachePatterns.TWEET(id.toString());
+
+      // 1. Try to get from Redis cache first
+      const cached = await redisManager.get<ITweetDocument>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      // 2. If not in cache, get from database
+      const tweet = await super.findById(id);
+
+      // 3. Cache the result if found
+      if (tweet) {
+        await redisManager.set(cacheKey, tweet, redisConfig.TWEET_CACHE_TTL);
+      }
+
+      return tweet;
+    } catch (error: any) {
+      console.error("Error in TweetRepository.findById:", error);
+      // Fallback to database if Redis fails
+      return await super.findById(id);
+    }
+  }
+
+  /**
+   * Create tweet with cache invalidation (Write-through pattern)
+   */
+  async create(data: Partial<ITweetDocument>): Promise<ITweetDocument> {
+    try {
+      // 1. Create in database
+      const tweet = await super.create(data);
+
+      // 2. Cache the new tweet
+      const cacheKey = cachePatterns.TWEET(tweet._id!.toString());
+      await redisManager.set(cacheKey, tweet, redisConfig.TWEET_CACHE_TTL);
+
+      // 3. Invalidate related caches
+      await Promise.all([
+        // Invalidate user's tweets cache
+        redisManager.del(cachePatterns.TWEETS_BY_USER(data.author!.toString())),
+        // Invalidate public timeline
+        redisManager.del(cachePatterns.TIMELINE_PUBLIC),
+        // Invalidate trending caches (new tweet might affect trends)
+        redisManager.del([
+          cachePatterns.TRENDING_TWEETS,
+          cachePatterns.TRENDING_HASHTAGS,
+        ]),
+      ]);
+
+      return tweet;
+    } catch (error: any) {
+      console.error("Error in TweetRepository.create:", error);
+      return await super.create(data);
+    }
+  }
+
+  /**
+   * Update tweet with cache invalidation (Write-through pattern)
+   */
+  async updateById(
+    id: MongooseObjectId,
+    data: Partial<ITweetDocument>
+  ): Promise<ITweetDocument | null> {
+    try {
+      // 1. Update in database
+      const updatedTweet = await super.updateById(id, data);
+
+      if (updatedTweet) {
+        // 2. Update cache immediately (Write-through)
+        const cacheKey = cachePatterns.TWEET(id.toString());
+        await redisManager.set(
+          cacheKey,
+          updatedTweet,
+          redisConfig.TWEET_CACHE_TTL
+        );
+
+        // 3. Invalidate related caches
+        await Promise.all([
+          redisManager.del(
+            cachePatterns.TWEETS_BY_USER(updatedTweet.author.toString())
+          ),
+          redisManager.del(cachePatterns.TIMELINE_PUBLIC),
+          // Invalidate like/retweet counts if those were updated
+          redisManager.del([
+            cachePatterns.TWEET_LIKES_COUNT(id.toString()),
+            cachePatterns.TWEET_RETWEETS_COUNT(id.toString()),
+          ]),
+        ]);
+      }
+
+      return updatedTweet;
+    } catch (error: any) {
+      console.error("Error in TweetRepository.updateById:", error);
+      return await super.updateById(id, data);
+    }
+  }
+
+  /**
+   * Delete tweet with cache invalidation
+   */
+  async deleteById(id: MongooseObjectId): Promise<boolean> {
+    try {
+      // Get tweet first for cache invalidation
+      const tweet = await this.findById(id);
+
+      // Delete from database
+      const deleted = await super.deleteById(id);
+
+      if (deleted && tweet) {
+        // Invalidate all related caches
+        await Promise.all([
+          redisManager.del([
+            cachePatterns.TWEET(id.toString()),
+            cachePatterns.TWEETS_BY_USER(tweet.author.toString()),
+            cachePatterns.TWEET_LIKES_COUNT(id.toString()),
+            cachePatterns.TWEET_RETWEETS_COUNT(id.toString()),
+            cachePatterns.TIMELINE_PUBLIC,
+          ]),
+          // Invalidate user timelines (tweet deletion affects timelines)
+          redisManager.deleteByPattern(`${cachePatterns.TIMELINE("*")}`),
+        ]);
+      }
+
+      return deleted;
+    } catch (error: any) {
+      console.error("Error in TweetRepository.deleteById:", error);
+      return await super.deleteById(id);
+    }
+  }
+
+  /**
+   * Find tweets by author with Redis caching
    */
   async findByAuthor(
     authorId: MongooseObjectId,
     options: BaseQueryOptions = {}
   ): Promise<ITweetDocument[]> {
     try {
+      const cacheKey = `${cachePatterns.TWEETS_BY_USER(
+        authorId.toString()
+      )}:${JSON.stringify(options)}`;
+
+      // Try to get from cache first
+      const cached = await redisManager.get<ITweetDocument[]>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      // Get from database
+      const filter = { author: authorId };
+      const tweets = await this.find(filter, {
+        populate: "author",
+        sort: { createdAt: -1 },
+        ...options,
+      });
+
+      // Cache the result
+      await redisManager.set(cacheKey, tweets, redisConfig.TWEET_CACHE_TTL);
+
+      return tweets;
+    } catch (error: any) {
+      console.error("Error in TweetRepository.findByAuthor:", error);
+      // Fallback to database
       const filter = { author: authorId };
       return await this.find(filter, {
         populate: "author",
         sort: { createdAt: -1 },
         ...options,
       });
-    } catch (error: any) {
-      throw new AppError("Failed to find tweets by author", 500);
     }
   }
 
   /**
-   * Find recent tweets
+   * Find recent tweets with Redis caching (for public timeline)
    */
   async findRecent(
     limit: number,
     options: BaseQueryOptions = {}
   ): Promise<ITweetDocument[]> {
     try {
+      const cacheKey = `${
+        cachePatterns.TIMELINE_PUBLIC
+      }:${limit}:${JSON.stringify(options)}`;
+
+      // Try to get from cache first
+      const cached = await redisManager.get<ITweetDocument[]>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+
+      // Get from database
+      const tweets = await this.find(
+        {},
+        {
+          populate: "author",
+          sort: { createdAt: -1 },
+          limit,
+          ...options,
+        }
+      );
+
+      // Cache the result with shorter TTL for timeline
+      await redisManager.set(cacheKey, tweets, redisConfig.TIMELINE_CACHE_TTL);
+
+      return tweets;
+    } catch (error: any) {
+      console.error("Error in TweetRepository.findRecent:", error);
+      // Fallback to database
       return await this.find(
         {},
         {
@@ -53,8 +240,6 @@ export class TweetRepository
           ...options,
         }
       );
-    } catch (error: any) {
-      throw new AppError("Failed to find recent tweets", 500);
     }
   }
 

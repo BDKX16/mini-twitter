@@ -53,10 +53,10 @@ router.post(
 // RUTAS DE ARCHIVOS
 // =============================================
 
+// Subida de imagen para registro (sin autenticación)
 router.post(
-  "/upload/profile-image",
-  applyProtection("authenticated"),
-  checkAuth,
+  "/upload/registration-image",
+  applyProtection("auth"),
   fileUploadController.uploadProfileImage.bind(fileUploadController)
 );
 

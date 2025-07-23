@@ -1,6 +1,6 @@
 {
   "name": "twitter-clone-api",
-  "version": "1.0.0",
+  "version": "1.1-stable",
   "description": "API backend para clon de Twitter con MongoDB y Redis",
   "main": "dist/index.js",
   "scripts": {

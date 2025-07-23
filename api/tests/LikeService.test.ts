@@ -353,7 +353,7 @@ describe("LikeService", () => {
   describe("getMostLikedTweets", () => {
     it("should get most liked tweets with limit", async () => {
       // Arrange
-      const mockTrendingTweets = [{ tweet: mockTweet, likesCount: 5 }];
+      const mockTrendingTweets = [{ _id: tweetId, count: 5 }];
       mockLikeRepository.getMostLikedTweets.mockResolvedValue(
         mockTrendingTweets
       );
@@ -372,8 +372,11 @@ describe("LikeService", () => {
       // Arrange
       const mockStats = {
         totalLikes: 15,
-        uniqueTweetsLiked: 12,
-        avgLikesPerDay: 2.5,
+        totalLikesReceived: 12,
+        mostLikedTweet: {
+          tweetId: tweetId,
+          likeCount: 5,
+        },
       };
       mockUserRepository.findById.mockResolvedValue(mockUser as IUserDocument);
       mockLikeRepository.getUserLikeStats.mockResolvedValue(mockStats);
@@ -435,7 +438,7 @@ describe("LikeService", () => {
   describe("getTrendingByLikes", () => {
     it("should get trending tweets by likes", async () => {
       // Arrange
-      const mockTrendingTweets = [{ tweet: mockTweet, likesCount: 10 }];
+      const mockTrendingTweets = [{ _id: tweetId, count: 10 }];
       mockLikeRepository.getMostLikedTweets.mockResolvedValue(
         mockTrendingTweets
       );
